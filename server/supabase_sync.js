@@ -164,7 +164,10 @@ export async function syncStoreToSupabase(db) {
         if (!record || typeof record !== 'object') return record;
         if (table === 'departments') {
           const { staffing_groups, doctor_count, on_leave_today_count, available_doctors_today, is_quota_exceeded_today, ...rest } = record;
-          return rest;
+          return {
+            ...rest,
+            min_staff_required: (record.min_staff_required !== null && record.min_staff_required !== undefined) ? Number(record.min_staff_required) : 0
+          };
         }
         if (table === 'doctors') {
           const { hire_date, working_pattern, specialty_group, ...rest } = record;

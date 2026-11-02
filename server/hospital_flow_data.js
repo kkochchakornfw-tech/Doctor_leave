@@ -45,7 +45,7 @@ export const departments = [
     staffing_groups: [
       { id: 'SURG_GEN', name_th: 'ศัลยกรรมทั่วไป', min_staff_required: 2 },
       { id: 'SURG_ORTHO', name_th: 'ศัลยกรรมกระดูกและข้อ', min_staff_required: 2 },
-      { id: 'SURG_REHAB', name_th: 'เวชศาสตร์ฟื้นฟู', min_staff_required: null }
+      { id: 'SURG_REHAB', name_th: 'เวชศาสตร์ฟื้นฟู', min_staff_required: 0 }
     ],
     is_active: true,
     created_at: new Date().toISOString()
@@ -89,7 +89,7 @@ export const departments = [
     code: 'ER_OUTREACH',
     name_th: 'Emergency & Outreach Clinic',
     name_en: 'Emergency & Outreach Clinic',
-    min_staff_required: null,
+    min_staff_required: 0,
     max_leave_per_day: 2,
     is_active: true,
     created_at: new Date().toISOString()
@@ -99,7 +99,7 @@ export const departments = [
     code: 'HEALTH_PROMO',
     name_th: 'HealthPromotion',
     name_en: 'Health Promotion',
-    min_staff_required: null,
+    min_staff_required: 0,
     max_leave_per_day: 1,
     is_active: true,
     created_at: new Date().toISOString()
@@ -109,7 +109,7 @@ export const departments = [
     code: 'ANES',
     name_th: 'วิสัญญี',
     name_en: 'Anesthesiology',
-    min_staff_required: null,
+    min_staff_required: 0,
     max_leave_per_day: 2,
     is_active: true,
     created_at: new Date().toISOString()
@@ -119,7 +119,7 @@ export const departments = [
     code: 'PPSI_SKIN',
     name_th: 'PPSI + Skin',
     name_en: 'PPSI & Skin',
-    min_staff_required: null,
+    min_staff_required: 0,
     max_leave_per_day: 2,
     is_active: true,
     created_at: new Date().toISOString()
@@ -129,7 +129,7 @@ export const departments = [
     code: 'EXEC',
     name_th: 'ฝ่ายบริหารการแพทย์ (ผู้บริหาร)',
     name_en: 'Medical Administration & Executive',
-    min_staff_required: null,
+    min_staff_required: 0,
     max_leave_per_day: 1,
     is_active: true,
     created_at: new Date().toISOString()
