@@ -449,10 +449,15 @@ router.put('/departments/:id', (req, res) => {
   const dept = db.departments.find(d => d.id === req.params.id);
   if (!dept) return res.status(404).json({ error: 'Department not found' });
 
-  const { min_staff_required, max_leave_per_day, name_th } = req.body;
-  if (min_staff_required !== undefined) dept.min_staff_required = parseInt(min_staff_required, 10);
-  if (max_leave_per_day !== undefined) dept.max_leave_per_day = parseInt(max_leave_per_day, 10);
+  const { min_staff_required, max_leave_per_day, name_th, staffing_groups } = req.body;
+  if (min_staff_required !== undefined) {
+    dept.min_staff_required = min_staff_required === '' || min_staff_required === null ? null : parseInt(min_staff_required, 10);
+  }
+  if (max_leave_per_day !== undefined) {
+    dept.max_leave_per_day = max_leave_per_day === '' || max_leave_per_day === null ? null : parseInt(max_leave_per_day, 10);
+  }
   if (name_th !== undefined) dept.name_th = name_th;
+  if (staffing_groups !== undefined) dept.staffing_groups = staffing_groups;
 
   saveStore();
   res.json({ message: 'Department quota updated successfully', department: dept });
@@ -753,7 +758,7 @@ router.put('/balances/:doctorId', (req, res) => {
 // -------------------------------------------------------------
 router.get('/quota-check', (req, res) => {
   const db = getDb();
-  const { departmentId, date } = req.query;
+  const { departmentId, date, doctorId } = req.query;
 
   if (!departmentId || !date) {
     return res.status(400).json({ error: 'departmentId and date are required' });
@@ -762,19 +767,29 @@ router.get('/quota-check', (req, res) => {
   const dept = db.departments.find(d => d.id === departmentId);
   if (!dept) return res.status(404).json({ error: 'Department not found' });
 
-  // Only count actual doctors (exclude Medical Admin staff like EMP-KOONG who don't see patients)
-  const deptDoctors = db.doctors.filter(d => {
+  // Look up doctor if provided (to see if they belong to a specific specialty group)
+  const requestingDoctor = doctorId ? db.doctors.find(d => d.id === doctorId) : null;
+  let targetGroup = null;
+  if (dept.staffing_groups && requestingDoctor?.specialty_group) {
+    targetGroup = dept.staffing_groups.find(g => g.id === requestingDoctor.specialty_group);
+  }
+
+  // Only count actual doctors in this department / specialty group (exclude Medical Admin staff like EMP-KOONG)
+  const poolDoctors = db.doctors.filter(d => {
     if (d.department_id !== departmentId || d.is_active === false) return false;
     if (d.employee_id === 'EMP-KOONG') return false;
+    if (targetGroup && d.specialty_group !== targetGroup.id) return false;
     const roles = db.doctor_roles.filter(r => r.doctor_id === d.id).map(r => r.role);
     return roles.includes('DOCTOR') || roles.includes('DEPT_HEAD');
   });
-  const totalDoctors = deptDoctors.length;
+  const totalDoctors = poolDoctors.length;
+  const minRequired = targetGroup ? targetGroup.min_staff_required : dept.min_staff_required;
+  const scopeName = targetGroup ? targetGroup.name_th : dept.name_th;
 
   const computeDayAvailability = (targetDate) => {
     const onLeaveReqs = db.leave_requests.filter(r => {
       if (r.status !== 'APPROVED' && r.status !== 'PENDING') return false;
-      const doc = deptDoctors.find(d => d.id === r.doctor_id);
+      const doc = poolDoctors.find(d => d.id === r.doctor_id);
       if (!doc) return false;
       return targetDate >= r.start_date && targetDate <= r.end_date;
     });
@@ -783,16 +798,24 @@ router.get('/quota-check', (req, res) => {
     const currentOnLeave = onLeaveDocIds.size;
     const remainingDoctorsCount = Math.max(0, totalDoctors - currentOnLeave);
     const maxAllowed = dept.max_leave_per_day;
-    const isQuotaExceeded = currentOnLeave >= maxAllowed;
+
+    let isBelowMin = false;
+    if (minRequired != null && minRequired > 0 && remainingDoctorsCount < minRequired) {
+      isBelowMin = true;
+    }
+    const isQuotaExceeded = isBelowMin || (maxAllowed && currentOnLeave >= maxAllowed);
 
     let dayStatus = 'NORMAL';
-    if (currentOnLeave >= maxAllowed) {
+    if (isQuotaExceeded) {
       dayStatus = 'FULL';
-    } else if (currentOnLeave > 0 && currentOnLeave === maxAllowed - 1) {
+    } else if (
+      (minRequired != null && minRequired > 0 && remainingDoctorsCount === minRequired) ||
+      (maxAllowed && currentOnLeave === maxAllowed - 1)
+    ) {
       dayStatus = 'NEAR_LIMIT';
     }
 
-    const availableDoctors = deptDoctors
+    const availableDoctors = poolDoctors
       .filter(d => !onLeaveDocIds.has(d.id))
       .map(d => ({
         doctor_id: d.id,
@@ -802,7 +825,7 @@ router.get('/quota-check', (req, res) => {
       }));
 
     const onLeaveDoctors = onLeaveReqs.map(r => {
-      const doc = deptDoctors.find(d => d.id === r.doctor_id);
+      const doc = poolDoctors.find(d => d.id === r.doctor_id);
       return {
         doctor_id: r.doctor_id,
         name: doc ? `${doc.prefix_th}${doc.first_name_th} ${doc.last_name_th}` : 'แพทย์',
@@ -817,8 +840,10 @@ router.get('/quota-check', (req, res) => {
       total_doctors: totalDoctors,
       current_on_leave: currentOnLeave,
       remaining_doctors_count: remainingDoctorsCount,
+      min_staff_required: minRequired,
       max_allowed: maxAllowed,
       is_quota_exceeded: isQuotaExceeded,
+      is_below_min: isBelowMin,
       status: dayStatus,
       available_doctors: availableDoctors,
       on_leave_doctors: onLeaveDoctors
@@ -844,12 +869,16 @@ router.get('/quota-check', (req, res) => {
   res.json({
     department_id: dept.id,
     department_name: dept.name_th,
+    specialty_group_id: targetGroup ? targetGroup.id : null,
+    specialty_group_name: targetGroup ? targetGroup.name_th : null,
+    scope_name: scopeName,
     total_doctors: totalDoctors,
     remaining_doctors_count: selectedDayInfo.remaining_doctors_count,
     max_allowed: dept.max_leave_per_day,
-    min_staff_required: dept.min_staff_required,
+    min_staff_required: minRequired,
     current_on_leave: selectedDayInfo.current_on_leave,
     is_quota_exceeded: selectedDayInfo.is_quota_exceeded,
+    is_below_min: selectedDayInfo.is_below_min,
     status: selectedDayInfo.status,
     available_doctors: selectedDayInfo.available_doctors,
     on_leave_doctors: selectedDayInfo.on_leave_doctors,
@@ -1221,29 +1250,83 @@ router.post('/leave-requests', handleUpload, async (req, res) => {
       }
     }
 
-    // Quota check
+    // Quota & Minimum Staffing Check
     let isException = false;
     let quotaInfo = null;
 
     if (dept) {
-      const onLeaveCount = db.leave_requests.filter(r => {
-        if (r.status !== 'APPROVED' && r.status !== 'PENDING') return false;
-        const d = db.doctors.find(item => item.id === r.doctor_id);
-        return d && d.department_id === dept.id && (start_date >= r.start_date && start_date <= r.end_date);
-      }).length;
+      let targetGroup = null;
+      if (dept.staffing_groups && doctor.specialty_group) {
+        targetGroup = dept.staffing_groups.find(g => g.id === doctor.specialty_group);
+      }
+      const minRequired = targetGroup ? targetGroup.min_staff_required : dept.min_staff_required;
+      const scopeName = targetGroup ? targetGroup.name_th : dept.name_th;
 
-      isException = onLeaveCount >= dept.max_leave_per_day;
+      const poolDoctors = db.doctors.filter(d => {
+        if (d.department_id !== dept.id || d.is_active === false || d.employee_id === 'EMP-KOONG') return false;
+        if (targetGroup) return d.specialty_group === targetGroup.id;
+        const roles = db.doctor_roles.filter(r => r.doctor_id === d.id).map(r => r.role);
+        return roles.includes('DOCTOR') || roles.includes('DEPT_HEAD');
+      });
+      const totalPoolDoctors = poolDoctors.length;
+
+      // Check across all days in requested range
+      let curr = new Date(start_date + 'T00:00:00');
+      const endD = new Date((end_date || start_date) + 'T00:00:00');
+      let violatedDate = null;
+      let violatedRemaining = 0;
+      let isBelowMinStaff = false;
+      let maxOnLeaveCount = 0;
+
+      while (curr <= endD) {
+        const yyyy = curr.getFullYear();
+        const mm = String(curr.getMonth() + 1).padStart(2, '0');
+        const dd = String(curr.getDate()).padStart(2, '0');
+        const dateStr = `${yyyy}-${mm}-${dd}`;
+
+        const onLeavePoolDocIds = new Set(
+          db.leave_requests
+            .filter(r => (r.status === 'APPROVED' || r.status === 'PENDING') && dateStr >= r.start_date && dateStr <= r.end_date)
+            .map(r => r.doctor_id)
+            .filter(id => poolDoctors.some(d => d.id === id) && id !== doctor_id)
+        );
+
+        const onLeaveCount = onLeavePoolDocIds.size;
+        if (onLeaveCount > maxOnLeaveCount) maxOnLeaveCount = onLeaveCount;
+
+        const remainingAfterThisLeave = Math.max(0, totalPoolDoctors - (onLeaveCount + 1));
+        if (minRequired != null && minRequired > 0 && remainingAfterThisLeave < minRequired) {
+          isBelowMinStaff = true;
+          violatedDate = dateStr;
+          violatedRemaining = remainingAfterThisLeave;
+          break;
+        }
+
+        curr.setDate(curr.getDate() + 1);
+      }
+
+      isException = isBelowMinStaff || Boolean(dept.max_leave_per_day && maxOnLeaveCount >= dept.max_leave_per_day);
       quotaInfo = {
         dept_name: dept.name_th,
+        scope_name: scopeName,
         max_allowed: dept.max_leave_per_day,
-        current_on_leave: onLeaveCount,
-        is_quota_exceeded: isException
+        min_staff_required: minRequired,
+        current_on_leave: maxOnLeaveCount,
+        is_quota_exceeded: isException,
+        is_below_min: isBelowMinStaff
       };
 
-      if (isException && !isEmergency && submitted_by_admin !== 'true') {
-        return res.status(400).json({
-          error: `โควตาแพทย์ลาของแผนก${dept.name_th}ในวันที่เลือกเต็มแล้ว (${onLeaveCount}/${dept.max_leave_per_day} ท่าน) ไม่สามารถยื่นลาได้`
-        });
+      if (isException && submitted_by_admin !== 'true') {
+        if (isBelowMinStaff) {
+          return res.status(400).json({
+            error: `ไม่สามารถยื่นลาได้ เนื่องจากแพทย์${scopeName}จะเหลือเพียง ${violatedRemaining} ท่าน ซึ่งต่ำกว่าเกณฑ์ขั้นต่ำ (${minRequired} ท่าน ในวันที่ ${violatedDate}) กรุณาติดต่อฝ่ายการแพทย์ (พี่กุ้ง) เพื่อพิจารณาบันทึกเป็นกรณีพิเศษ`
+          });
+        }
+        if (dept.max_leave_per_day && maxOnLeaveCount >= dept.max_leave_per_day && !isEmergency) {
+          return res.status(400).json({
+            error: `โควตาแพทย์ลาของแผนก${dept.name_th}ในวันที่เลือกเต็มแล้ว (${maxOnLeaveCount}/${dept.max_leave_per_day} ท่าน) ไม่สามารถยื่นลาได้`
+          });
+        }
       }
     }
 
@@ -1316,6 +1399,7 @@ router.post('/leave-requests', handleUpload, async (req, res) => {
         reason: sanitizeInput(reason),
         is_emergency: isEmergency,
         is_exception: isException,
+        submitted_by_admin: submitted_by_admin === 'true',
         upload_later: isUploadLater,
         attachment_due_date: attachmentDueDate,
         substitute_doctor_id: substitute_doctor_id || null,

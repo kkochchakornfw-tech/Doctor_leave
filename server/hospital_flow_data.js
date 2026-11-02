@@ -3,7 +3,7 @@
 
 export const currentYear = new Date().getFullYear();
 
-// 1. All 10 Departments as specified by P'Koong + Executive Admin
+// 1. All 11 Departments as specified by P'Koong + Executive Admin
 export const departments = [
   {
     id: 'd1111111-1111-1111-1111-111111111111',
@@ -26,12 +26,27 @@ export const departments = [
     created_at: new Date().toISOString()
   },
   {
+    id: 'dbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+    code: 'OBGYN',
+    name_th: 'สูตินรีเวช',
+    name_en: 'Obstetrics & Gynecology',
+    min_staff_required: 2,
+    max_leave_per_day: 1,
+    is_active: true,
+    created_at: new Date().toISOString()
+  },
+  {
     id: 'd3333333-3333-3333-3333-333333333333',
     code: 'SURG_ORTHO_REHAB',
     name_th: 'ศัลยกรรมทั่วไป ศัลยกรรมกระดูก เวชศาสตร์ฟื้นฟู',
     name_en: 'Surgery, Orthopedics & Rehabilitation',
-    min_staff_required: 5,
+    min_staff_required: 4,
     max_leave_per_day: 2,
+    staffing_groups: [
+      { id: 'SURG_GEN', name_th: 'ศัลยกรรมทั่วไป', min_staff_required: 2 },
+      { id: 'SURG_ORTHO', name_th: 'ศัลยกรรมกระดูกและข้อ', min_staff_required: 2 },
+      { id: 'SURG_REHAB', name_th: 'เวชศาสตร์ฟื้นฟู', min_staff_required: null }
+    ],
     is_active: true,
     created_at: new Date().toISOString()
   },
@@ -40,7 +55,7 @@ export const departments = [
     code: 'DENT',
     name_th: 'ทันตกรรม',
     name_en: 'Dentistry',
-    min_staff_required: 3,
+    min_staff_required: 2,
     max_leave_per_day: 2,
     is_active: true,
     created_at: new Date().toISOString()
@@ -50,8 +65,12 @@ export const departments = [
     code: 'EYE_ENT',
     name_th: 'Eye ENT',
     name_en: 'Eye & ENT',
-    min_staff_required: 3,
+    min_staff_required: 2,
     max_leave_per_day: 1,
+    staffing_groups: [
+      { id: 'EYE', name_th: 'จักษุ (EYE)', min_staff_required: 1 },
+      { id: 'ENT', name_th: 'โสต ศอ นาสิก (ENT)', min_staff_required: 1 }
+    ],
     is_active: true,
     created_at: new Date().toISOString()
   },
@@ -60,7 +79,7 @@ export const departments = [
     code: 'RAD',
     name_th: 'รังสี และ รังสีรักษา',
     name_en: 'Radiology & Radiation Oncology',
-    min_staff_required: 3,
+    min_staff_required: 2,
     max_leave_per_day: 1,
     is_active: true,
     created_at: new Date().toISOString()
@@ -70,7 +89,7 @@ export const departments = [
     code: 'ER_OUTREACH',
     name_th: 'Emergency & Outreach Clinic',
     name_en: 'Emergency & Outreach Clinic',
-    min_staff_required: 6,
+    min_staff_required: null,
     max_leave_per_day: 2,
     is_active: true,
     created_at: new Date().toISOString()
@@ -80,7 +99,7 @@ export const departments = [
     code: 'HEALTH_PROMO',
     name_th: 'HealthPromotion',
     name_en: 'Health Promotion',
-    min_staff_required: 3,
+    min_staff_required: null,
     max_leave_per_day: 1,
     is_active: true,
     created_at: new Date().toISOString()
@@ -90,7 +109,7 @@ export const departments = [
     code: 'ANES',
     name_th: 'วิสัญญี',
     name_en: 'Anesthesiology',
-    min_staff_required: 4,
+    min_staff_required: null,
     max_leave_per_day: 2,
     is_active: true,
     created_at: new Date().toISOString()
@@ -100,7 +119,7 @@ export const departments = [
     code: 'PPSI_SKIN',
     name_th: 'PPSI + Skin',
     name_en: 'PPSI & Skin',
-    min_staff_required: 4,
+    min_staff_required: null,
     max_leave_per_day: 2,
     is_active: true,
     created_at: new Date().toISOString()
@@ -110,14 +129,14 @@ export const departments = [
     code: 'EXEC',
     name_th: 'ฝ่ายบริหารการแพทย์ (ผู้บริหาร)',
     name_en: 'Medical Administration & Executive',
-    min_staff_required: 2,
+    min_staff_required: null,
     max_leave_per_day: 1,
     is_active: true,
     created_at: new Date().toISOString()
   }
 ];
 
-// 2. Doctors: Executive (ผช.ผอ.), Medical Admin (พี่กุ้ง), 10 Dept Heads, and Staff Doctors
+// 2. Doctors: Executive (ผช.ผอ.), Medical Admin (พี่กุ้ง), 11 Dept Heads, and Staff Doctors
 export const doctors = [
   // นพ.ปริวรรธน์ ระเด่น - ผู้ช่วยผู้อำนวยการ รพ.
   {
@@ -207,6 +226,7 @@ export const doctors = [
     position: 'หัวหน้าแผนกศัลยกรรมทั่วไป ศัลยกรรมกระดูก เวชศาสตร์ฟื้นฟู',
     doctor_type: 'FULL_TIME',
     department_id: 'd3333333-3333-3333-3333-333333333333',
+    specialty_group: 'SURG_GEN',
     phone: '081-1110013',
     email: 'sutsana.s@bsi.hospital',
     hire_date: '2019-06-01',
@@ -242,9 +262,10 @@ export const doctors = [
     prefix_th: 'นพ.',
     first_name_th: 'เฉลิมวิทย์',
     last_name_th: 'ภูริจิตราวงศ์',
-    position: 'หัวหน้าแผนก Eye ENT',
+    position: 'หัวหน้าแผนก Eye ENT (จักษุแพทย์)',
     doctor_type: 'FULL_TIME',
     department_id: 'd5555555-5555-5555-5555-555555555555',
+    specialty_group: 'EYE',
     phone: '081-1110015',
     email: 'chalermvit.p@bsi.hospital',
     hire_date: '2018-09-01',
@@ -347,6 +368,25 @@ export const doctors = [
     avatar: 'https://images.unsplash.com/photo-1582750433449-648ed127bb54?w=150&auto=format&fit=crop&q=80',
     created_at: new Date().toISOString()
   },
+  // 11. หัวหน้าแผนกสูตินรีเวช: นพ.มานพ จันทนพันธ์
+  {
+    id: 'c0000000-0000-0000-0000-000000000030',
+    employee_id: 'HEAD-OBGYN',
+    license_no: 'ว. 51234',
+    line_user_id: 'U_DR_MANOP_HEAD',
+    prefix_th: 'นพ.',
+    first_name_th: 'มานพ',
+    last_name_th: 'จันทนพันธ์',
+    position: 'หัวหน้าแผนกสูตินรีเวช',
+    doctor_type: 'FULL_TIME',
+    department_id: 'dbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+    phone: '081-3334455',
+    email: 'manop.c@bsi.hospital',
+    hire_date: '2016-03-01',
+    is_active: true,
+    avatar: 'https://images.unsplash.com/photo-1537368910025-700350fe46c7?w=150&auto=format&fit=crop&q=80',
+    created_at: new Date().toISOString()
+  },
   // Staff Doctor: นพ.ชาติชาย วิสัยทัศน์ (อายุรกรรม)
   {
     id: 'c0000000-0000-0000-0000-000000000003',
@@ -404,7 +444,7 @@ export const doctors = [
     avatar: 'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?w=150&auto=format&fit=crop&q=80',
     created_at: new Date().toISOString()
   },
-  // Staff Doctor: นพ.กิตติศักดิ์ เจริญผล (ศัลยกรรมทั่วไปฯ)
+  // Staff Doctor: นพ.กิตติศักดิ์ เจริญผล (ศัลยกรรมกระดูกและข้อ)
   {
     id: 'c0000000-0000-0000-0000-000000000022',
     employee_id: 'DOC-SURG-01',
@@ -416,11 +456,71 @@ export const doctors = [
     position: 'ศัลยแพทย์กระดูกและข้อ',
     doctor_type: 'FULL_TIME',
     department_id: 'd3333333-3333-3333-3333-333333333333',
+    specialty_group: 'SURG_ORTHO',
     phone: '085-5556677',
     email: 'kittisak.c@bsi.hospital',
     hire_date: '2021-08-15',
     is_active: true,
     avatar: 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?w=150&auto=format&fit=crop&q=80',
+    created_at: new Date().toISOString()
+  },
+  // Staff Doctor: นพ.ธีรภัทร อัศวโภคิน (ศัลยกรรมทั่วไป)
+  {
+    id: 'c0000000-0000-0000-0000-000000000023',
+    employee_id: 'DOC-SURG-GEN',
+    license_no: 'ว. 60124',
+    line_user_id: 'U_DR_THEERAPHAT_SURG',
+    prefix_th: 'นพ.',
+    first_name_th: 'ธีรภัทร',
+    last_name_th: 'อัศวโภคิน',
+    position: 'ศัลยแพทย์ทั่วไป',
+    doctor_type: 'FULL_TIME',
+    department_id: 'd3333333-3333-3333-3333-333333333333',
+    specialty_group: 'SURG_GEN',
+    phone: '086-6667788',
+    email: 'theeraphat.a@bsi.hospital',
+    hire_date: '2022-09-01',
+    is_active: true,
+    avatar: 'https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?w=150&auto=format&fit=crop&q=80',
+    created_at: new Date().toISOString()
+  },
+  // Staff Doctor: พญ.ปิยะดา รุ่งเรืองกิจ (หู คอ จมูก ENT)
+  {
+    id: 'c0000000-0000-0000-0000-000000000024',
+    employee_id: 'DOC-ENT-01',
+    license_no: 'ว. 61235',
+    line_user_id: 'U_DR_PIYADA_ENT',
+    prefix_th: 'พญ.',
+    first_name_th: 'ปิยะดา',
+    last_name_th: 'รุ่งเรืองกิจ',
+    position: 'แพทย์ผู้เชี่ยวชาญโสต ศอ นาสิก (ENT)',
+    doctor_type: 'FULL_TIME',
+    department_id: 'd5555555-5555-5555-5555-555555555555',
+    specialty_group: 'ENT',
+    phone: '087-7778899',
+    email: 'piyada.r@bsi.hospital',
+    hire_date: '2023-01-15',
+    is_active: true,
+    avatar: 'https://images.unsplash.com/photo-1594824813583-0570b240186c?w=150&auto=format&fit=crop&q=80',
+    created_at: new Date().toISOString()
+  },
+  // Staff Doctor: พญ.ทิพย์สุดา มงคลเวช (สูตินรีเวช)
+  {
+    id: 'c0000000-0000-0000-0000-000000000031',
+    employee_id: 'DOC-OBGYN-01',
+    license_no: 'ว. 62346',
+    line_user_id: 'U_DR_THIPSUDA_OBGYN',
+    prefix_th: 'พญ.',
+    first_name_th: 'ทิพย์สุดา',
+    last_name_th: 'มงคลเวช',
+    position: 'สูตินรีแพทย์ประจำ',
+    doctor_type: 'FULL_TIME',
+    department_id: 'dbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+    phone: '088-8889900',
+    email: 'thipsuda.m@bsi.hospital',
+    hire_date: '2023-05-01',
+    is_active: true,
+    avatar: 'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?w=150&auto=format&fit=crop&q=80',
     created_at: new Date().toISOString()
   }
 ];
@@ -467,11 +567,18 @@ export const doctor_roles = [
   { id: 'b0000000-0000-0000-0000-000000000020', doctor_id: 'c0000000-0000-0000-0000-000000000020', role: 'DEPT_HEAD' },
   { id: 'b0000000-0000-0000-0000-000000000120', doctor_id: 'c0000000-0000-0000-0000-000000000020', role: 'DOCTOR' },
 
+  // 11. หัวหน้าแผนกสูตินรีเวช: นพ.มานพ จันทนพันธ์
+  { id: 'b0000000-0000-0000-0000-000000000030', doctor_id: 'c0000000-0000-0000-0000-000000000030', role: 'DEPT_HEAD' },
+  { id: 'b0000000-0000-0000-0000-000000000130', doctor_id: 'c0000000-0000-0000-0000-000000000030', role: 'DOCTOR' },
+
   // Staff Doctors
   { id: 'b0000000-0000-0000-0000-000000000003', doctor_id: 'c0000000-0000-0000-0000-000000000003', role: 'DOCTOR' },
   { id: 'b0000000-0000-0000-0000-000000000004', doctor_id: 'c0000000-0000-0000-0000-000000000004', role: 'DOCTOR' },
   { id: 'b0000000-0000-0000-0000-000000000021', doctor_id: 'c0000000-0000-0000-0000-000000000021', role: 'DOCTOR' },
-  { id: 'b0000000-0000-0000-0000-000000000022', doctor_id: 'c0000000-0000-0000-0000-000000000022', role: 'DOCTOR' }
+  { id: 'b0000000-0000-0000-0000-000000000022', doctor_id: 'c0000000-0000-0000-0000-000000000022', role: 'DOCTOR' },
+  { id: 'b0000000-0000-0000-0000-000000000023', doctor_id: 'c0000000-0000-0000-0000-000000000023', role: 'DOCTOR' },
+  { id: 'b0000000-0000-0000-0000-000000000024', doctor_id: 'c0000000-0000-0000-0000-000000000024', role: 'DOCTOR' },
+  { id: 'b0000000-0000-0000-0000-000000000031', doctor_id: 'c0000000-0000-0000-0000-000000000031', role: 'DOCTOR' }
 ];
 
 // 4. Approval Routes:
@@ -543,8 +650,57 @@ export const approval_routes = [
     approver_id: 'c0000000-0000-0000-0000-000000000099', // นพ.ปริวรรธน์
     is_active: true
   },
+  // นพ.ธีรภัทร (Step 1: นพ.ศุษณะ, Step 2: นพ.ปริวรรธน์)
+  {
+    id: 'a0000000-0000-0000-0000-000000000023',
+    doctor_id: 'c0000000-0000-0000-0000-000000000023',
+    step_order: 1,
+    approver_id: 'c0000000-0000-0000-0000-000000000013', // นพ.ศุษณะ
+    is_active: true
+  },
+  {
+    id: 'a0000000-0000-0000-0000-000000000024',
+    doctor_id: 'c0000000-0000-0000-0000-000000000023',
+    step_order: 2,
+    approver_id: 'c0000000-0000-0000-0000-000000000099', // นพ.ปริวรรธน์
+    is_active: true
+  },
 
-  // --- หัวหน้าแพทย์ทั้ง 10 ท่าน ยื่นใบลาเอง -> วิ่งตรงหา นพ.ปริวรรธน์ ระเด่น (1 Step) ---
+  // --- แผนก Eye ENT ---
+  // พญ.ปิยะดา (Step 1: นพ.เฉลิมวิทย์, Step 2: นพ.ปริวรรธน์)
+  {
+    id: 'a0000000-0000-0000-0000-000000000025',
+    doctor_id: 'c0000000-0000-0000-0000-000000000024',
+    step_order: 1,
+    approver_id: 'c0000000-0000-0000-0000-000000000015', // นพ.เฉลิมวิทย์
+    is_active: true
+  },
+  {
+    id: 'a0000000-0000-0000-0000-000000000026',
+    doctor_id: 'c0000000-0000-0000-0000-000000000024',
+    step_order: 2,
+    approver_id: 'c0000000-0000-0000-0000-000000000099', // นพ.ปริวรรธน์
+    is_active: true
+  },
+
+  // --- แผนกสูตินรีเวช ---
+  // พญ.ทิพย์สุดา (Step 1: นพ.มานพ, Step 2: นพ.ปริวรรธน์)
+  {
+    id: 'a0000000-0000-0000-0000-000000000031',
+    doctor_id: 'c0000000-0000-0000-0000-000000000031',
+    step_order: 1,
+    approver_id: 'c0000000-0000-0000-0000-000000000030', // นพ.มานพ
+    is_active: true
+  },
+  {
+    id: 'a0000000-0000-0000-0000-000000000032',
+    doctor_id: 'c0000000-0000-0000-0000-000000000031',
+    step_order: 2,
+    approver_id: 'c0000000-0000-0000-0000-000000000099', // นพ.ปริวรรธน์
+    is_active: true
+  },
+
+  // --- หัวหน้าแพทย์ทั้ง 11 ท่าน ยื่นใบลาเอง -> วิ่งตรงหา นพ.ปริวรรธน์ ระเด่น (1 Step) ---
   {
     id: 'a0000000-0000-0000-0000-000000000011',
     doctor_id: 'c0000000-0000-0000-0000-000000000011', // นพ.ธันวา
@@ -611,6 +767,13 @@ export const approval_routes = [
   {
     id: 'a0000000-0000-0000-0000-000000000020',
     doctor_id: 'c0000000-0000-0000-0000-000000000020', // นพ.สงวน
+    step_order: 1,
+    approver_id: 'c0000000-0000-0000-0000-000000000099',
+    is_active: true
+  },
+  {
+    id: 'a0000000-0000-0000-0000-000000000030',
+    doctor_id: 'c0000000-0000-0000-0000-000000000030', // นพ.มานพ (สูตินรีเวช)
     step_order: 1,
     approver_id: 'c0000000-0000-0000-0000-000000000099',
     is_active: true

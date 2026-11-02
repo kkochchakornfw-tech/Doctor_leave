@@ -37,7 +37,20 @@ export default function AdminCriteriaPage() {
 
   const handleChange = (deptId, field, value) => {
     setDepartments(prev =>
-      prev.map(d => (d.id === deptId ? { ...d, [field]: value } : d))
+      prev.map(d => (d.id === deptId ? { ...d, [field]: value === '' ? null : value } : d))
+    );
+  };
+
+  const handleGroupChange = (deptId, groupId, value) => {
+    setDepartments(prev =>
+      prev.map(d => {
+        if (d.id !== deptId) return d;
+        const groups = (d.staffing_groups || []).map(g => {
+          if (g.id !== groupId) return g;
+          return { ...g, min_staff_required: value === '' ? null : parseInt(value, 10) };
+        });
+        return { ...d, staffing_groups: groups };
+      })
     );
   };
 
@@ -48,9 +61,10 @@ export default function AdminCriteriaPage() {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          min_staff_required: dept.min_staff_required,
-          max_leave_per_day: dept.max_leave_per_day,
-          name_th: dept.name_th
+          min_staff_required: dept.min_staff_required === '' ? null : dept.min_staff_required,
+          max_leave_per_day: dept.max_leave_per_day === '' ? null : dept.max_leave_per_day,
+          name_th: dept.name_th,
+          staffing_groups: dept.staffing_groups
         })
       });
 
@@ -164,19 +178,46 @@ export default function AdminCriteriaPage() {
 
                 {/* Editable Inputs */}
                 <div className="space-y-3 text-xs">
-                  <div>
-                    <label className="block text-slate-600 font-semibold mb-1">
-                      จำนวนแพทย์ขั้นต่ำที่ต้องปฏิบัติงาน (คน):
-                    </label>
-                    <input
-                      type="number"
-                      min={1}
-                      max={50}
-                      value={dept.min_staff_required}
-                      onChange={(e) => handleChange(dept.id, 'min_staff_required', e.target.value)}
-                      className="w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50/50 focus:bg-white focus:ring-2 focus:ring-sky-500 font-semibold text-slate-800"
-                    />
-                  </div>
+                  {dept.staffing_groups && dept.staffing_groups.length > 0 ? (
+                    <div className="space-y-2 p-3 bg-slate-50/80 rounded-xl border border-slate-200">
+                      <span className="text-[11px] font-bold text-slate-700 block">
+                        เกณฑ์แพทย์ขั้นต่ำแยกตามสาขาเฉพาะทาง:
+                      </span>
+                      {dept.staffing_groups.map(group => (
+                        <div key={group.id} className="flex items-center justify-between gap-2">
+                          <label className="text-slate-600 font-medium">
+                            {group.name_th}:
+                          </label>
+                          <div className="flex items-center gap-1">
+                            <input
+                              type="number"
+                              min={0}
+                              max={20}
+                              value={group.min_staff_required ?? ''}
+                              onChange={(e) => handleGroupChange(dept.id, group.id, e.target.value)}
+                              className="w-16 p-1.5 text-center rounded-lg border border-slate-200 bg-white focus:ring-2 focus:ring-sky-500 font-bold text-slate-800"
+                            />
+                            <span className="text-[11px] text-slate-500">ท่าน</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div>
+                      <label className="block text-slate-600 font-semibold mb-1">
+                        จำนวนแพทย์ขั้นต่ำที่ต้องปฏิบัติงาน (คน):
+                      </label>
+                      <input
+                        type="number"
+                        min={0}
+                        max={50}
+                        value={dept.min_staff_required ?? ''}
+                        onChange={(e) => handleChange(dept.id, 'min_staff_required', e.target.value)}
+                        placeholder="ไม่กำหนด"
+                        className="w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50/50 focus:bg-white focus:ring-2 focus:ring-sky-500 font-semibold text-slate-800"
+                      />
+                    </div>
+                  )}
 
                   <div>
                     <label className="block text-slate-600 font-semibold mb-1">
@@ -186,7 +227,7 @@ export default function AdminCriteriaPage() {
                       type="number"
                       min={1}
                       max={20}
-                      value={dept.max_leave_per_day}
+                      value={dept.max_leave_per_day ?? ''}
                       onChange={(e) => handleChange(dept.id, 'max_leave_per_day', e.target.value)}
                       className="w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50/50 focus:bg-white focus:ring-2 focus:ring-sky-500 font-semibold text-[#006699]"
                     />

@@ -297,7 +297,7 @@ export default function DoctorLiffPage() {
     if (!currentDoctor || !startDate) return;
     const checkQuota = async () => {
       try {
-        const res = await fetch(`/api/quota-check?departmentId=${currentDoctor.department_id}&date=${startDate}`);
+        const res = await fetch(`/api/quota-check?departmentId=${currentDoctor.department_id}&date=${startDate}&doctorId=${currentDoctor.id}`);
         if (res.ok) {
           const data = await res.json();
           setQuotaInfo(data);
@@ -317,7 +317,7 @@ export default function DoctorLiffPage() {
     }
     const checkSwapQuota = async () => {
       try {
-        const res = await fetch(`/api/quota-check?departmentId=${currentDoctor.department_id}&date=${swapDate}`);
+        const res = await fetch(`/api/quota-check?departmentId=${currentDoctor.department_id}&date=${swapDate}&doctorId=${currentDoctor.id}`);
         if (res.ok) {
           const data = await res.json();
           setSwapQuotaInfo(data);
@@ -465,7 +465,12 @@ export default function DoctorLiffPage() {
       return;
     }
     if (isDeptQuotaFull) {
-      setErrorMessage(`โควตาการลาของแผนก${quotaInfo.department_name}ในวันที่เลือกเต็มแล้ว (${quotaInfo.current_on_leave}/${quotaInfo.max_allowed} ท่าน) ไม่สามารถยื่นลาได้`);
+      const scope = quotaInfo?.scope_name || quotaInfo?.department_name || 'แผนก';
+      if (quotaInfo?.is_below_min || (quotaInfo?.min_staff_required != null && quotaInfo?.remaining_doctors_count < quotaInfo?.min_staff_required)) {
+        setErrorMessage(`ไม่สามารถยื่นลาได้ เนื่องจากแพทย์${scope}จะเหลือเพียง ${quotaInfo.remaining_doctors_count} ท่าน ซึ่งต่ำกว่าเกณฑ์ขั้นต่ำ (${quotaInfo.min_staff_required} ท่าน) กรุณาติดต่อฝ่ายการแพทย์ (พี่กุ้ง)`);
+      } else {
+        setErrorMessage(`โควตาการลาของ${scope}ในวันที่เลือกเต็มแล้ว (${quotaInfo.current_on_leave}/${quotaInfo.max_allowed} ท่าน) ไม่สามารถยื่นลาได้`);
+      }
       return;
     }
     if (selectedType.code === 'SHIFT_SWAP' && !swapDate) {
@@ -907,9 +912,19 @@ export default function DoctorLiffPage() {
                       />
                     </div>
                     {quotaInfo && (
-                      <div className="text-[11px] text-amber-900 bg-white/90 px-2.5 py-1.5 rounded-lg border border-amber-200/80 flex items-center justify-between">
-                        <span>แพทย์ในแผนกวันนั้น:</span>
-                        <strong className="text-amber-950">เหลือ {quotaInfo.remaining_doctors_count ?? 0} / {quotaInfo.total_doctors ?? 0} ท่าน</strong>
+                      <div className="space-y-1">
+                        <div className="text-[11px] text-amber-900 bg-white/90 px-2.5 py-1.5 rounded-lg border border-amber-200/80 flex items-center justify-between">
+                          <span>แพทย์{quotaInfo.scope_name || quotaInfo.department_name}วันนั้น:</span>
+                          <strong className="text-amber-950">
+                            เหลือ {quotaInfo.remaining_doctors_count ?? 0} / {quotaInfo.total_doctors ?? 0} ท่าน
+                            {quotaInfo.min_staff_required ? ` (เกณฑ์ขั้นต่ำ ${quotaInfo.min_staff_required} ท่าน)` : ''}
+                          </strong>
+                        </div>
+                        {quotaInfo.status === 'FULL' && (
+                          <div className="text-[10px] text-rose-700 bg-rose-50 px-2 py-1 rounded border border-rose-200 font-bold">
+                            ⚠️ แพทย์จะเหลือต่ำกว่าเกณฑ์ขั้นต่ำ ({quotaInfo.min_staff_required} ท่าน) ไม่สามารถเลือกวันนี้ได้
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -946,11 +961,13 @@ export default function DoctorLiffPage() {
                     {swapDate && swapQuotaInfo ? (
                       <div className="text-[11px] text-emerald-900 bg-white/95 px-2.5 py-1.5 rounded-lg border border-emerald-200 flex items-center justify-between">
                         <span>แพทย์ออกตรวจวันนั้น:</span>
-                        <strong className="text-emerald-700">เหลือ {swapQuotaInfo.remaining_doctors_count ?? 0} / {swapQuotaInfo.total_doctors ?? 0} ท่าน</strong>
+                        <strong className="text-emerald-700">
+                          เหลือ {swapQuotaInfo.remaining_doctors_count ?? 0} / {swapQuotaInfo.total_doctors ?? 0} ท่าน
+                        </strong>
                       </div>
                     ) : (
-                      <div className="text-[11px] text-emerald-700 px-1">
-                        คลิกเลือกวันจากตารางด้านล่างได้เลย
+                      <div className="text-[11px] text-emerald-700 px-1 font-medium">
+                        💡 คลิกเลือกวันจากตารางด้านล่างได้เลย (ระบบแสดงจำนวนแพทย์คงเหลือแต่ละวัน)
                       </div>
                     )}
                   </div>
@@ -961,7 +978,7 @@ export default function DoctorLiffPage() {
                   <div className="p-3 bg-white rounded-2xl border border-slate-200 space-y-2 shadow-2xs">
                     <div className="flex items-center justify-between gap-2 flex-wrap">
                       <span className="text-xs font-bold text-slate-700">
-                        📅 เช็คจำนวนแพทย์ออกตรวจคงเหลือในแผนก{quotaInfo.department_name} (แตะเพื่อเลือกวันสลับตรวจ)
+                        📅 เช็คจำนวนแพทย์ออกตรวจคงเหลือ ({quotaInfo.scope_name || quotaInfo.department_name}) แตะเพื่อเลือกวันสลับตรวจ
                       </span>
                       <button
                         type="button"
@@ -978,6 +995,9 @@ export default function DoctorLiffPage() {
                         const isRequestedOff = day.date === startDate;
                         const rem = day.remaining_doctors_count ?? 0;
                         const tot = day.total_doctors ?? 0;
+                        const minStaff = day.min_staff_required;
+                        const isFull = day.status === 'FULL' || (minStaff && rem < minStaff);
+                        const isNear = day.status === 'NEAR_LIMIT' || (minStaff && rem === minStaff);
 
                         return (
                           <button
@@ -989,6 +1009,10 @@ export default function DoctorLiffPage() {
                                 ? 'bg-emerald-600 text-white border-emerald-600 ring-2 ring-emerald-200 shadow-xs'
                                 : isRequestedOff
                                 ? 'bg-amber-50 border-amber-300 text-amber-900'
+                                : isFull
+                                ? 'bg-rose-50/70 border-rose-200 hover:border-rose-400 text-rose-900'
+                                : isNear
+                                ? 'bg-amber-50/60 border-amber-200 hover:border-amber-400 text-amber-900'
                                 : 'bg-slate-50/70 border-slate-200 hover:border-emerald-400 hover:bg-white text-slate-800'
                             }`}
                           >
@@ -999,10 +1023,12 @@ export default function DoctorLiffPage() {
                             <div className={`w-full py-0.5 px-1 rounded text-[11px] font-extrabold whitespace-nowrap ${
                               isPickedSwap
                                 ? 'bg-white text-emerald-700'
+                                : isFull
+                                ? 'bg-rose-100 text-rose-700'
+                                : isNear
+                                ? 'bg-amber-100 text-amber-800'
                                 : rem === tot
                                 ? 'bg-emerald-100/80 text-emerald-800'
-                                : rem <= 1
-                                ? 'bg-rose-100 text-rose-700'
                                 : 'bg-sky-100 text-[#006699]'
                             }`}>
                               เหลือ {rem}/{tot} ท่าน
@@ -1013,10 +1039,14 @@ export default function DoctorLiffPage() {
                                 <span className="text-white font-bold">✓ วันสลับตรวจ</span>
                               ) : isRequestedOff ? (
                                 <span className="text-amber-700 font-bold">วันขอหยุด</span>
+                              ) : isFull ? (
+                                <span className="text-rose-600 font-bold">⚠️ ต่ำกว่าเกณฑ์</span>
+                              ) : isNear ? (
+                                <span className="text-amber-700 font-bold">⚡ ใกล้เกณฑ์</span>
                               ) : day.current_on_leave > 0 ? (
-                                <span className="text-rose-600">ลา {day.current_on_leave} ท่าน</span>
+                                <span className="text-slate-600">ลา {day.current_on_leave} ท่าน</span>
                               ) : (
-                                <span className="text-slate-500">อยู่ครบ</span>
+                                <span className="text-emerald-700 font-medium">✓ อยู่ครบ</span>
                               )}
                             </div>
                           </button>
@@ -1331,7 +1361,7 @@ export default function DoctorLiffPage() {
 
           {/* Department Quota & Remaining Clinic Doctors Indicator Box */}
           {quotaInfo && selectedType?.code !== 'SHIFT_SWAP' && (
-            <div className={`p-3 rounded-xl border text-xs space-y-1.5 ${quotaInfo.status === 'FULL'
+            <div className={`p-3.5 rounded-2xl border text-xs space-y-2 ${quotaInfo.status === 'FULL'
                 ? 'bg-rose-50 border-rose-200 text-rose-800'
                 : quotaInfo.status === 'NEAR_LIMIT'
                   ? 'bg-amber-50 border-amber-200 text-amber-800'
@@ -1343,25 +1373,33 @@ export default function DoctorLiffPage() {
                       quotaInfo.status === 'NEAR_LIMIT' ? 'bg-amber-500' : 'bg-emerald-500'
                     }`} />
                   <div>
-                    <span className="font-bold">แผนก{quotaInfo.department_name} ({formatThaiDateShort(startDate)}):</span>
-                    <span className="ml-1.5 font-extrabold">
+                    <span className="font-bold">{quotaInfo.scope_name || quotaInfo.department_name} ({formatThaiDateShort(startDate)}):</span>
+                    <span className="ml-1.5 font-extrabold text-[13px]">
                       แพทย์ออกตรวจคงเหลือ {quotaInfo.remaining_doctors_count ?? 0} / {quotaInfo.total_doctors ?? 0} ท่าน
                     </span>
+                    {quotaInfo.min_staff_required && (
+                      <span className="ml-1.5 text-[11px] opacity-80">
+                        (เกณฑ์ขั้นต่ำ {quotaInfo.min_staff_required} ท่าน)
+                      </span>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-white/80 border border-current/15">
-                    ลาแล้ว {quotaInfo.current_on_leave} / โควตาลา {quotaInfo.max_allowed} ท่าน
+                    ลาแล้ว {quotaInfo.current_on_leave} ท่าน
                   </span>
-                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-white shadow-2xs">
-                    {quotaInfo.status === 'FULL' ? '⚠️ โควตาเต็ม' :
-                      quotaInfo.status === 'NEAR_LIMIT' ? 'ใกล้เต็ม' : 'ว่างปกติ'}
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-white shadow-2xs">
+                    {quotaInfo.status === 'FULL'
+                      ? '⚠️ ต่ำกว่าเกณฑ์/เต็ม'
+                      : quotaInfo.status === 'NEAR_LIMIT'
+                        ? '⚡ ใกล้ถึงเกณฑ์'
+                        : '✓ ว่างปกติ'}
                   </span>
                 </div>
               </div>
 
               {quotaInfo.available_doctors && quotaInfo.available_doctors.length > 0 && (
-                <div className="text-[11px] opacity-90 pl-4">
+                <div className="text-[11px] opacity-90 pl-4 border-t border-current/10 pt-1.5">
                   <span>แพทย์ที่อยู่ปฏิบัติงาน: </span>
                   <strong className="font-semibold">
                     {quotaInfo.available_doctors.map(d => d.short_name).join(', ')}
@@ -1376,15 +1414,44 @@ export default function DoctorLiffPage() {
             </div>
           )}
 
-          {/* Department Quota Full Alert */}
+          {/* Department Quota Full or Below Minimum Staff Warning Banner */}
           {quotaInfo?.status === 'FULL' && (
-            <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 flex items-start gap-2.5 animate-in fade-in">
-              <ShieldAlert className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-              <div>
-                <strong className="font-bold">โควตาแพทย์ลาของแผนกเต็มแล้ว ({quotaInfo.current_on_leave} / {quotaInfo.max_allowed} ท่าน):</strong>
-                <p className="text-[11px] mt-0.5 leading-relaxed text-rose-700">
-                  ระบบจำกัดแพทย์ลาพร้อมกันไม่เกิน {quotaInfo.max_allowed} ท่านต่อวันเพื่อความปลอดภัยของผู้ป่วย จึงไม่สามารถกดส่งใบลาในวันที่เลือกได้ หากมีเหตุจำเป็นเร่งด่วน กรุณาติดต่อหัวหน้าแผนกหรือฝ่ายการแพทย์
-                </p>
+            <div className="p-3.5 bg-rose-50 border-2 border-rose-300 rounded-2xl text-xs text-rose-900 space-y-2.5 animate-in fade-in shadow-xs">
+              <div className="flex items-start gap-2.5">
+                <ShieldAlert className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <strong className="font-bold text-rose-900 text-sm block">
+                    {quotaInfo.is_below_min || (quotaInfo.min_staff_required && quotaInfo.remaining_doctors_count < quotaInfo.min_staff_required)
+                      ? `แพทย์จะเหลือต่ำกว่าเกณฑ์ขั้นต่ำ (เหลือ ${quotaInfo.remaining_doctors_count} ท่าน จากเกณฑ์ขั้นต่ำ ${quotaInfo.min_staff_required} ท่าน)`
+                      : `โควตาแพทย์ลาของแผนกเต็มแล้ว (${quotaInfo.current_on_leave} / ${quotaInfo.max_allowed} ท่าน)`}
+                  </strong>
+                  <p className="text-[11px] leading-relaxed text-rose-800">
+                    {quotaInfo.min_staff_required
+                      ? `ระเบียบ รพ. กำหนดให้แพทย์${quotaInfo.scope_name || quotaInfo.department_name} ต้องมีแพทย์ออกตรวจไม่น้อยกว่า ${quotaInfo.min_staff_required} ท่าน เพื่อความปลอดภัยและคุณภาพการดูแลผู้ป่วย ระบบจึงล็อคไม่ให้ยื่นลาในวันดังกล่าว`
+                      : `ระบบจำกัดแพทย์ลาพร้อมกันไม่เกิน ${quotaInfo.max_allowed} ท่านต่อวันเพื่อความปลอดภัยของผู้ป่วย จึงไม่สามารถกดส่งใบลาในวันที่เลือกได้`}
+                  </p>
+                </div>
+              </div>
+
+              {/* Action: Contact Admin (P'Koong) for Override */}
+              <div className="pt-2 border-t border-rose-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <span className="text-[11px] text-rose-700 font-medium">
+                  กรณีมีเหตุจำเป็นเร่งด่วน กรุณาติดต่อฝ่ายการแพทย์ (พี่กุ้ง) เพื่อพิจารณาเป็นกรณีพิเศษ:
+                </span>
+                <div className="flex items-center gap-2 shrink-0">
+                  <a
+                    href="tel:076361888,1234"
+                    className="inline-flex items-center gap-1 px-3 py-1 bg-white text-rose-800 rounded-lg border border-rose-300 font-bold text-[11px] hover:bg-rose-100 transition-colors shadow-2xs"
+                  >
+                    📞 พี่กุ้ง (ต่อ 1234)
+                  </a>
+                  <a
+                    href="tel:0819998888"
+                    className="inline-flex items-center gap-1 px-3 py-1 bg-rose-600 text-white rounded-lg font-bold text-[11px] hover:bg-rose-700 transition-colors shadow-2xs"
+                  >
+                    📱 081-999-8888
+                  </a>
+                </div>
               </div>
             </div>
           )}
@@ -1586,7 +1653,11 @@ export default function DoctorLiffPage() {
             ) : isDeptQuotaFull ? (
               <>
                 <ShieldAlert className="w-4 h-4 text-rose-500" />
-                <span>🚫 โควตาแพทย์ลาของแผนกเต็มแล้ว ({quotaInfo?.current_on_leave}/{quotaInfo?.max_allowed} ท่าน)</span>
+                <span>
+                  {quotaInfo?.is_below_min || (quotaInfo?.min_staff_required && quotaInfo?.remaining_doctors_count < quotaInfo?.min_staff_required)
+                    ? `🚫 แพทย์จะเหลือต่ำกว่าเกณฑ์ (${quotaInfo?.remaining_doctors_count}/${quotaInfo?.min_staff_required} ท่าน) - ติดต่อฝ่ายการแพทย์`
+                    : `🚫 โควตาแพทย์ลาเต็มแล้ว (${quotaInfo?.current_on_leave}/${quotaInfo?.max_allowed} ท่าน)`}
+                </span>
               </>
             ) : (
               <>

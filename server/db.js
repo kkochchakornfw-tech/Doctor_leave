@@ -483,6 +483,49 @@ export const initStore = async () => {
     });
   }
 
+  // Sync departments with latest master departments (add OBGYN, update min_staff_required, staffing_groups)
+  if (!db.departments) {
+    db.departments = seed.departments;
+  } else {
+    seed.departments.forEach(seedDept => {
+      const existing = db.departments.find(dp => dp.id === seedDept.id || dp.code === seedDept.code);
+      if (existing) {
+        existing.min_staff_required = seedDept.min_staff_required;
+        if (seedDept.staffing_groups) existing.staffing_groups = seedDept.staffing_groups;
+        if (seedDept.name_th) existing.name_th = seedDept.name_th;
+      } else {
+        db.departments.push(seedDept);
+      }
+    });
+  }
+
+  // Sync doctors with latest seed (add Dr. Manop, Dr. Thipsuda, Dr. Theeraphat, Dr. Piyada, set specialty_group)
+  seed.doctors.forEach(seedDoc => {
+    const existing = db.doctors.find(d => d.id === seedDoc.id || d.employee_id === seedDoc.employee_id);
+    if (existing) {
+      if (seedDoc.specialty_group) existing.specialty_group = seedDoc.specialty_group;
+      if (seedDoc.department_id) existing.department_id = seedDoc.department_id;
+    } else {
+      db.doctors.push(seedDoc);
+    }
+  });
+
+  // Sync doctor roles
+  seed.doctor_roles.forEach(seedRole => {
+    const exists = db.doctor_roles.some(r => r.doctor_id === seedRole.doctor_id && r.role === seedRole.role);
+    if (!exists) {
+      db.doctor_roles.push(seedRole);
+    }
+  });
+
+  // Sync approval routes
+  seed.approval_routes.forEach(seedRoute => {
+    const exists = db.approval_routes.some(r => r.doctor_id === seedRoute.doctor_id && r.step_order === seedRoute.step_order);
+    if (!exists) {
+      db.approval_routes.push(seedRoute);
+    }
+  });
+
   // Remove legacy duplicate doctor DOC-001 (นพ.ปารวี c0000000-0000-0000-0000-000000000002) which duplicated HEAD-MED / HEAD-PED
   const legacyParaveeId = 'c0000000-0000-0000-0000-000000000002';
   const realHeadMedId = 'c0000000-0000-0000-0000-000000000011';
