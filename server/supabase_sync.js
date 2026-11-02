@@ -101,15 +101,36 @@ export async function loadStoreFromSupabase(fallbackDb) {
             ...req,
             reimbursement_requested: req.reimbursement_requested ?? localReq.reimbursement_requested,
             swap_date: req.swap_date ?? localReq.swap_date,
-            substitute_doctor_id: req.substitute_doctor_id ?? localReq.substitute_doctor_id
+            substitute_doctor_id: req.substitute_doctor_id ?? localReq.substitute_doctor_id,
+            submitted_by_admin: req.submitted_by_admin ?? localReq.submitted_by_admin
           };
         }
         return req;
       });
+
+      // Merge local departments extra fields (like staffing_groups)
+      const mergedDepartments = (departments || []).map(dept => {
+        const localDept = fallbackDb?.departments?.find(ld => ld.id === dept.id || ld.code === dept.code);
+        return {
+          ...dept,
+          min_staff_required: dept.min_staff_required ?? localDept?.min_staff_required,
+          staffing_groups: dept.staffing_groups ?? localDept?.staffing_groups
+        };
+      });
+
+      // Merge local doctors extra fields (like specialty_group)
+      const mergedDoctors = (doctors || []).map(doc => {
+        const localDoc = fallbackDb?.doctors?.find(ld => ld.id === doc.id || ld.employee_id === doc.employee_id);
+        return {
+          ...doc,
+          specialty_group: doc.specialty_group ?? localDoc?.specialty_group
+        };
+      });
+
       return {
-        departments: departments || [],
+        departments: mergedDepartments,
         leave_types: leave_types || [],
-        doctors: doctors || [],
+        doctors: mergedDoctors,
         doctor_roles: doctor_roles || [],
         approval_routes: approval_routes || [],
         leave_balances: leave_balances || [],
@@ -141,8 +162,12 @@ export async function syncStoreToSupabase(db) {
       
       const sanitized = data.map(record => {
         if (!record || typeof record !== 'object') return record;
+        if (table === 'departments') {
+          const { staffing_groups, doctor_count, on_leave_today_count, available_doctors_today, is_quota_exceeded_today, ...rest } = record;
+          return rest;
+        }
         if (table === 'doctors') {
-          const { hire_date, working_pattern, ...rest } = record;
+          const { hire_date, working_pattern, specialty_group, ...rest } = record;
           return rest;
         }
         if (table === 'leave_types') {
@@ -156,7 +181,8 @@ export async function syncStoreToSupabase(db) {
           const { 
             reminder_sent_24, reminder_sent_48, 
             attachment_reminder_sent_24, attachment_reminder_sent_due,
-            substitute_doctor_id, reimbursement_requested, swap_date, ...rest 
+            substitute_doctor_id, reimbursement_requested, swap_date,
+            submitted_by_admin, ...rest 
           } = record;
           return rest;
         }

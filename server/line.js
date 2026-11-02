@@ -15,11 +15,14 @@ export const isLineConfigured = Boolean(LINE_CHANNEL_ACCESS_TOKEN && LINE_CHANNE
 export async function sendLinePushMessage(toLineUserId, messages) {
   // === TARGET LINE USER ID RESOLUTION ===
   // If doctor/approver has their own LINE User ID, send directly to them!
-  // If not linked yet, fallback to TEST_LINE_USER_ID for demo/testing.
+  // If not linked or dummy placeholder, fallback to TEST_LINE_USER_ID.
+  const isValidLineId = (id) => typeof id === 'string' && /^U[0-9a-f]{32}$/i.test(id);
   const overrideId = process.env.TEST_LINE_USER_ID;
-  const targetId = (toLineUserId && toLineUserId.startsWith('U')) 
-    ? toLineUserId 
-    : ((overrideId && overrideId.length > 10) ? overrideId : toLineUserId);
+  
+  let targetId = toLineUserId;
+  if (!isValidLineId(targetId) && isValidLineId(overrideId)) {
+    targetId = overrideId;
+  }
 
   const payload = {
     to: targetId,
@@ -35,8 +38,8 @@ export async function sendLinePushMessage(toLineUserId, messages) {
     simulatedLineMessages.pop();
   }
 
-  if (!isLineConfigured) {
-    console.log(`[LINE SIMULATOR] 📱 Sent 1-on-1 Message to ${targetId}:`, JSON.stringify(messages, null, 2));
+  if (!isLineConfigured || !isValidLineId(targetId)) {
+    console.log(`[LINE SIMULATOR] 📱 Sent 1-on-1 Message to ${targetId || 'UNKNOWN'}:`, JSON.stringify(messages, null, 2));
     return { success: true, simulated: true, payload };
   }
 
