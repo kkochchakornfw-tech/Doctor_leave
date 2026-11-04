@@ -43,6 +43,50 @@ export async function checkSupabaseHealth() {
   }
 }
 
+const SUPABASE_COLUMNS = {
+  departments: new Set([
+    'id', 'code', 'name_th', 'name_en', 'min_staff_required', 'max_leave_per_day', 'is_active', 'created_at'
+  ]),
+  doctors: new Set([
+    'id', 'employee_id', 'license_no', 'line_user_id', 'prefix_th', 'first_name_th', 'last_name_th',
+    'first_name_en', 'last_name_en', 'email', 'phone', 'doctor_type', 'department_id', 'avatar',
+    'is_active', 'created_at', 'updated_at'
+  ]),
+  doctor_roles: new Set([
+    'id', 'doctor_id', 'role', 'created_at'
+  ]),
+  approval_routes: new Set([
+    'id', 'doctor_id', 'step_order', 'approver_id', 'is_active'
+  ]),
+  leave_types: new Set([
+    'id', 'code', 'name_th', 'name_en', 'count_mode', 'allows_half_day', 'requires_attachment',
+    'attachment_threshold_days', 'min_notice_days', 'max_days_per_request', 'allows_backdate',
+    'is_full_time_only', 'sort_order', 'is_active', 'color'
+  ]),
+  leave_balances: new Set([
+    'id', 'doctor_id', 'leave_type_id', 'fiscal_year', 'entitlement_days', 'carried_over_days',
+    'used_days', 'pending_days', 'updated_at'
+  ]),
+  leave_requests: new Set([
+    'id', 'request_no', 'doctor_id', 'leave_type_id', 'start_date', 'end_date', 'duration_days',
+    'half_day_type', 'reason', 'is_emergency', 'is_exception', 'upload_later', 'status',
+    'current_step', 'total_steps', 'idempotency_key', 'cancelled_at', 'cancelled_reason',
+    'created_at', 'updated_at'
+  ]),
+  leave_attachments: new Set([
+    'id', 'request_id', 'file_name', 'storage_path', 'file_size_bytes', 'mime_type', 'uploaded_at'
+  ]),
+  approval_logs: new Set([
+    'id', 'request_id', 'approver_id', 'step_order', 'action', 'comments', 'acted_at'
+  ]),
+  audit_logs: new Set([
+    'id', 'table_name', 'record_id', 'action', 'actor_id', 'old_data', 'new_data', 'ip_address', 'created_at'
+  ]),
+  holidays: new Set([
+    'id', 'holiday_date', 'name_th', 'is_active'
+  ])
+};
+
 export async function loadStoreFromSupabase(fallbackDb) {
   if (!isSupabaseConfigured || !supabase) {
     return fallbackDb;
@@ -102,7 +146,15 @@ export async function loadStoreFromSupabase(fallbackDb) {
             reimbursement_requested: req.reimbursement_requested ?? localReq.reimbursement_requested,
             swap_date: req.swap_date ?? localReq.swap_date,
             substitute_doctor_id: req.substitute_doctor_id ?? localReq.substitute_doctor_id,
-            submitted_by_admin: req.submitted_by_admin ?? localReq.submitted_by_admin
+            substitute_doctor_name: req.substitute_doctor_name ?? localReq.substitute_doctor_name,
+            duty_handover_notes: req.duty_handover_notes ?? localReq.duty_handover_notes,
+            has_shift_conflict: req.has_shift_conflict ?? localReq.has_shift_conflict,
+            attachment_due_date: req.attachment_due_date ?? localReq.attachment_due_date,
+            submitted_by_admin: req.submitted_by_admin ?? localReq.submitted_by_admin,
+            reminder_sent_24: req.reminder_sent_24 ?? localReq.reminder_sent_24,
+            reminder_sent_48: req.reminder_sent_48 ?? localReq.reminder_sent_48,
+            attachment_reminder_sent_24: req.attachment_reminder_sent_24 ?? localReq.attachment_reminder_sent_24,
+            attachment_reminder_sent_due: req.attachment_reminder_sent_due ?? localReq.attachment_reminder_sent_due
           };
         }
         return req;
@@ -118,18 +170,34 @@ export async function loadStoreFromSupabase(fallbackDb) {
         };
       });
 
-      // Merge local doctors extra fields (like specialty_group)
+      // Merge local doctors extra fields (like specialty_group, position, hire_date)
       const mergedDoctors = (doctors || []).map(doc => {
         const localDoc = fallbackDb?.doctors?.find(ld => ld.id === doc.id || ld.employee_id === doc.employee_id);
         return {
           ...doc,
+          position: doc.position ?? localDoc?.position,
+          hire_date: doc.hire_date ?? localDoc?.hire_date,
+          working_pattern: doc.working_pattern ?? localDoc?.working_pattern,
           specialty_group: doc.specialty_group ?? localDoc?.specialty_group
+        };
+      });
+
+      // Merge local leave_types extra fields (like attachment_deadline_days, max_requests_per_year, etc.)
+      const mergedLeaveTypes = (leave_types || []).map(lt => {
+        const localLt = fallbackDb?.leave_types?.find(l => l.id === lt.id || l.code === lt.code);
+        return {
+          ...lt,
+          attachment_deadline_days: localLt?.attachment_deadline_days ?? lt.attachment_deadline_days ?? 3,
+          max_requests_per_year: localLt?.max_requests_per_year ?? lt.max_requests_per_year,
+          has_reimbursement_option: localLt?.has_reimbursement_option ?? lt.has_reimbursement_option,
+          min_tenure_months: localLt?.min_tenure_months ?? lt.min_tenure_months,
+          min_work_days_in_month: localLt?.min_work_days_in_month ?? lt.min_work_days_in_month
         };
       });
 
       return {
         departments: mergedDepartments,
-        leave_types: leave_types || [],
+        leave_types: mergedLeaveTypes,
         doctors: mergedDoctors,
         doctor_roles: doctor_roles || [],
         approval_routes: approval_routes || [],
@@ -160,43 +228,35 @@ export async function syncStoreToSupabase(db) {
     const safeUpsert = async (table, data) => {
       if (!data || data.length === 0) return;
       
+      const validCols = SUPABASE_COLUMNS[table];
       const sanitized = data.map(record => {
         if (!record || typeof record !== 'object') return record;
+        
+        let out = {};
+        if (validCols) {
+          for (const key of Object.keys(record)) {
+            if (validCols.has(key)) {
+              out[key] = record[key];
+            }
+          }
+        } else {
+          out = { ...record };
+        }
+
         if (table === 'departments') {
-          const { staffing_groups, doctor_count, on_leave_today_count, available_doctors_today, is_quota_exceeded_today, ...rest } = record;
-          return {
-            ...rest,
-            min_staff_required: (record.min_staff_required !== null && record.min_staff_required !== undefined) ? Number(record.min_staff_required) : 0
-          };
+          out.min_staff_required = (out.min_staff_required !== null && out.min_staff_required !== undefined)
+            ? Number(out.min_staff_required)
+            : 0;
+          out.max_leave_per_day = (out.max_leave_per_day !== null && out.max_leave_per_day !== undefined)
+            ? Number(out.max_leave_per_day)
+            : 1;
         }
-        if (table === 'doctors') {
-          const { hire_date, working_pattern, specialty_group, ...rest } = record;
-          return rest;
+
+        if (table === 'approval_logs' && !out.acted_at) {
+          out.acted_at = record.created_at || new Date().toISOString();
         }
-        if (table === 'leave_types') {
-          const {
-            max_requests_per_year, has_reimbursement_option,
-            min_tenure_months, min_work_days_in_month, ...rest
-          } = record;
-          return rest;
-        }
-        if (table === 'leave_requests') {
-          const { 
-            reminder_sent_24, reminder_sent_48, 
-            attachment_reminder_sent_24, attachment_reminder_sent_due,
-            substitute_doctor_id, reimbursement_requested, swap_date,
-            submitted_by_admin, ...rest 
-          } = record;
-          return rest;
-        }
-        if (table === 'approval_logs') {
-          const { created_at, ...rest } = record;
-          return {
-            ...rest,
-            acted_at: record.acted_at || created_at || new Date().toISOString()
-          };
-        }
-        return record;
+
+        return out;
       });
 
       const options = {};
