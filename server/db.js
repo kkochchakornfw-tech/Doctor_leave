@@ -219,57 +219,8 @@ const getInitialSeedData = () => {
     });
   });
 
-  // Sample Leave Requests for Demo
-  const todayStr = new Date().toISOString().split('T')[0];
-  const tomorrowStr = new Date(Date.now() + 86400000).toISOString().split('T')[0];
-  const nextWeekStr = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0];
-
-  const leave_requests = [
-    {
-      id: '88888888-8888-8888-8888-888888888888',
-      request_no: `LV-${currentYear}-00001`,
-      doctor_id: 'c0000000-0000-0000-0000-000000000003',
-      leave_type_id: '11111111-1111-1111-1111-111111111111',
-      start_date: nextWeekStr,
-      end_date: nextWeekStr,
-      duration_days: 1.0,
-      half_day_type: 'FULL_DAY',
-      reason: 'ลาพักผ่อนประจำปี พาครอบครัวไปตรวจสุขภาพต่างจังหวัด',
-      is_emergency: false,
-      is_exception: false,
-      upload_later: false,
-      status: 'PENDING',
-      current_step: 1,
-      total_steps: 1,
-      created_at: new Date(Date.now() - 3600000).toISOString(),
-      updated_at: new Date(Date.now() - 3600000).toISOString()
-    },
-    {
-      id: '66125f71-d591-4e40-8e22-fd7282e78d38',
-      request_no: `LV-${currentYear}-00002`,
-      doctor_id: 'c0000000-0000-0000-0000-000000000003',
-      leave_type_id: '22222222-2222-2222-2222-222222222222',
-      start_date: todayStr,
-      end_date: todayStr,
-      duration_days: 0.5,
-      half_day_type: 'MORNING',
-      reason: 'สสส',
-      is_emergency: true,
-      is_exception: false,
-      upload_later: false,
-      status: 'PENDING',
-      current_step: 1,
-      total_steps: 1,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    }
-  ];
-
-  // Link initial pending days for req-sample-001
-  const vacationBal = leave_balances.find(b => b.doctor_id === 'c0000000-0000-0000-0000-000000000003' && b.leave_type_id === '11111111-1111-1111-1111-111111111111');
-  if (vacationBal) {
-    vacationBal.pending_days = 1.0;
-  }
+  // Clean Slate: No pending/stale leave requests
+  const leave_requests = [];
 
   const holidays = [
     { id: '00000000-0000-0000-0000-000000001013', holiday_date: `${currentYear}-01-01`, name_th: 'วันขึ้นปีใหม่', is_active: true },
@@ -279,18 +230,7 @@ const getInitialSeedData = () => {
   ];
 
   const approval_logs = [];
-  const audit_logs = [
-    {
-      id: '00000000-0000-0000-0000-000000001017',
-      table_name: 'leave_requests',
-      record_id: '88888888-8888-8888-8888-888888888888',
-      action: 'INSERT',
-      actor_id: 'c0000000-0000-0000-0000-000000000003',
-      new_data: { request_no: `LV-${currentYear}-00001`, status: 'PENDING' },
-      ip_address: '127.0.0.1',
-      created_at: new Date(Date.now() - 3600000).toISOString()
-    }
-  ];
+  const audit_logs = [];
   const leave_attachments = [];
 
   const tenure_rules = [
@@ -348,7 +288,7 @@ const getInitialSeedData = () => {
     {
       id: '00000000-0000-0000-0000-000000002003',
       doctor_id: 'c0000000-0000-0000-0000-000000000003', // Dr. Chartchai
-      shift_date: nextWeekStr,
+      shift_date: getOffsetDate(7),
       shift_type: 'NIGHT_DUTY',
       department_id: 'd1111111-1111-1111-1111-111111111111',
       start_time: '20:00',
