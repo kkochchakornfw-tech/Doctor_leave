@@ -160,14 +160,23 @@ export async function loadStoreFromSupabase(fallbackDb) {
         return req;
       });
 
-      // Merge local departments extra fields (like staffing_groups)
+      // Merge local departments extra fields (like staffing_mode, staffing_groups, head_doctor_id, final_approver_id)
       const mergedDepartments = (departments || []).map(dept => {
         const localDept = fallbackDb?.departments?.find(ld => ld.id === dept.id || ld.code === dept.code);
         return {
           ...dept,
-          min_staff_required: dept.min_staff_required ?? localDept?.min_staff_required,
-          staffing_groups: dept.staffing_groups ?? localDept?.staffing_groups
+          min_staff_required: localDept?.min_staff_required ?? dept.min_staff_required,
+          staffing_mode: localDept?.staffing_mode ?? dept.staffing_mode ?? 'DEPARTMENT',
+          staffing_groups: localDept?.staffing_groups ?? dept.staffing_groups ?? [],
+          head_doctor_id: localDept?.head_doctor_id ?? dept.head_doctor_id,
+          final_approver_id: localDept?.final_approver_id ?? dept.final_approver_id
         };
+      });
+      // Also preserve any locally added departments not yet in cloud
+      (fallbackDb?.departments || []).forEach(ld => {
+        if (!mergedDepartments.some(md => md.id === ld.id || md.code === ld.code)) {
+          mergedDepartments.push(ld);
+        }
       });
 
       // Merge local doctors extra fields (like specialty_group, position, hire_date)
@@ -175,11 +184,40 @@ export async function loadStoreFromSupabase(fallbackDb) {
         const localDoc = fallbackDb?.doctors?.find(ld => ld.id === doc.id || ld.employee_id === doc.employee_id);
         return {
           ...doc,
-          position: doc.position ?? localDoc?.position,
-          hire_date: doc.hire_date ?? localDoc?.hire_date,
-          working_pattern: doc.working_pattern ?? localDoc?.working_pattern,
-          specialty_group: doc.specialty_group ?? localDoc?.specialty_group
+          position: localDoc?.position ?? doc.position,
+          hire_date: localDoc?.hire_date ?? doc.hire_date,
+          working_pattern: localDoc?.working_pattern ?? doc.working_pattern,
+          specialty_group: localDoc?.specialty_group ?? doc.specialty_group
         };
+      });
+      (fallbackDb?.doctors || []).forEach(ld => {
+        if (!mergedDoctors.some(md => md.id === ld.id || md.employee_id === ld.employee_id)) {
+          mergedDoctors.push(ld);
+        }
+      });
+
+      // Merge doctor roles
+      const mergedRoles = [...(doctor_roles || [])];
+      (fallbackDb?.doctor_roles || []).forEach(lr => {
+        if (!mergedRoles.some(r => r.doctor_id === lr.doctor_id && r.role === lr.role)) {
+          mergedRoles.push(lr);
+        }
+      });
+
+      // Merge approval routes
+      const mergedRoutes = [...(approval_routes || [])];
+      (fallbackDb?.approval_routes || []).forEach(lr => {
+        if (!mergedRoutes.some(r => r.doctor_id === lr.doctor_id && r.step_order === lr.step_order)) {
+          mergedRoutes.push(lr);
+        }
+      });
+
+      // Merge leave balances
+      const mergedBalances = [...(leave_balances || [])];
+      (fallbackDb?.leave_balances || []).forEach(lb => {
+        if (!mergedBalances.some(b => b.doctor_id === lb.doctor_id && b.leave_type_id === lb.leave_type_id && b.fiscal_year === lb.fiscal_year)) {
+          mergedBalances.push(lb);
+        }
       });
 
       // Merge local leave_types extra fields (like attachment_deadline_days, max_requests_per_year, etc.)
@@ -199,9 +237,9 @@ export async function loadStoreFromSupabase(fallbackDb) {
         departments: mergedDepartments,
         leave_types: mergedLeaveTypes,
         doctors: mergedDoctors,
-        doctor_roles: doctor_roles || [],
-        approval_routes: approval_routes || [],
-        leave_balances: leave_balances || [],
+        doctor_roles: mergedRoles,
+        approval_routes: mergedRoutes,
+        leave_balances: mergedBalances,
         leave_requests: mergedRequests,
         leave_attachments: leave_attachments || [],
         approval_logs: approval_logs || [],

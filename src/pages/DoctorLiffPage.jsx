@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import imageCompression from 'browser-image-compression';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -88,28 +89,20 @@ function addDaysToDate(dateStr, daysToAdd) {
   return `${y}-${m}-${day}`;
 }
 
-// Helper to get next working day (returning to duty at hospital)
-function getNextWorkingDay(endDateStr, holidays = []) {
+// Helper to get next day (returning to duty at hospital - doctors work every day, no weekend off)
+function getNextWorkingDay(endDateStr) {
   if (!endDateStr) return '';
-  const holidaySet = new Set((holidays || []).map(h => typeof h === 'string' ? h : h.holiday_date));
   const parts = endDateStr.split('-').map(Number);
   const d = new Date(parts[0], parts[1] - 1, parts[2]);
   d.setDate(d.getDate() + 1);
-  while (
-    d.getDay() === 0 ||
-    d.getDay() === 6 ||
-    holidaySet.has(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`)
-  ) {
-    d.setDate(d.getDate() + 1);
-  }
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
 }
 
-// Helper for Real-Time Duration Calculation & Transparency Breakdown
-function getLeaveBreakdown(startDate, endDate, halfDayType, countMode = 'WORKING_DAYS', holidays = [], shifts = []) {
+// Helper for Real-Time Duration Calculation & Transparency Breakdown (สำหรับแพทย์ นับตามปฏิทินทุกวัน ไม่มีวันหยุดเสาร์-อาทิตย์)
+function getLeaveBreakdown(startDate, endDate, halfDayType) {
   if (!startDate) {
     return { totalCalendarDays: 0, weekendDays: 0, holidaysCount: 0, weekendShiftsCount: 0, netDays: 0, isAllHolidays: false };
   }
@@ -127,50 +120,17 @@ function getLeaveBreakdown(startDate, endDate, halfDayType, countMode = 'WORKING
     return { totalCalendarDays: 1, weekendDays: 0, holidaysCount: 0, weekendShiftsCount: 0, netDays: 1, isAllHolidays: false };
   }
 
-  const holidaySet = new Set((holidays || []).map(h => typeof h === 'string' ? h : h.holiday_date));
-  const shiftDateSet = new Set((shifts || []).filter(s => s.status === 'SCHEDULED' || s.shift_date).map(s => s.shift_date));
-  let totalCalendarDays = 0;
-  let weekendDays = 0;
-  let holidaysCount = 0;
-  let weekendShiftsCount = 0;
-  let workingDays = 0;
+  // แพทย์ไม่มีวันหยุดเสาร์-อาทิตย์ คำนวณวันลาตามปฏิทินจริงทุกวัน
+  const diffTime = Math.abs(endD - startD);
+  const days = Math.round(diffTime / 86400000) + 1;
 
-  const current = new Date(startD);
-  while (current <= endD) {
-    totalCalendarDays++;
-    const dow = current.getDay();
-    const isWeekend = dow === 0 || dow === 6;
-    const y = current.getFullYear();
-    const m = String(current.getMonth() + 1).padStart(2, '0');
-    const d = String(current.getDate()).padStart(2, '0');
-    const dStr = `${y}-${m}-${d}`;
-    const isHoliday = holidaySet.has(dStr);
-    const hasShift = shiftDateSet.has(dStr);
-
-    if (hasShift) {
-      workingDays++;
-      if (isWeekend || isHoliday) {
-        weekendShiftsCount++;
-      }
-    } else if (isWeekend) {
-      weekendDays++;
-    } else if (isHoliday) {
-      holidaysCount++;
-    } else {
-      workingDays++;
-    }
-
-    current.setDate(current.getDate() + 1);
-  }
-
-  const netDays = countMode === 'CALENDAR_DAYS' ? totalCalendarDays : workingDays;
   return {
-    totalCalendarDays,
-    weekendDays,
-    holidaysCount,
-    weekendShiftsCount,
-    netDays,
-    isAllHolidays: countMode === 'WORKING_DAYS' && netDays === 0
+    totalCalendarDays: days,
+    weekendDays: 0,
+    holidaysCount: 0,
+    weekendShiftsCount: 0,
+    netDays: days,
+    isAllHolidays: false
   };
 }
 
@@ -181,10 +141,11 @@ export default function DoctorLiffPage() {
   const [balances, setBalances] = useState([]);
   const [selectedType, setSelectedType] = useState(null);
   const [contactSettings, setContactSettings] = useState({
-    department_name: 'ฝ่ายการแพทย์ (Medical Affairs)',
-    coordinator_name: 'คุณสิริมาศ',
+    department_name: 'ฝ่ายการแพทย์ / HR (Medical Affairs)',
+    coordinator_name: 'คุณธัญญธร ตันติกุล (พี่กุ้ง)',
     phone_emergency: '076-361-888',
-    phone_ext: '1234'
+    phone_ext: '1234',
+    phone_hotline: '089-470-9256'
   });
 
   useEffect(() => {
@@ -198,6 +159,11 @@ export default function DoctorLiffPage() {
 
   // Form State
   const todayStr = getLocalTodayString();
+  const maxSwapDateStr = (() => {
+    const now = new Date();
+    const lastDayNext = new Date(now.getFullYear(), now.getMonth() + 2, 0);
+    return `${lastDayNext.getFullYear()}-${String(lastDayNext.getMonth() + 1).padStart(2, '0')}-${String(lastDayNext.getDate()).padStart(2, '0')}`;
+  })();
   const [leaveMode, setLeaveMode] = useState('SINGLE'); // 'SINGLE' (วันเดียว) | 'RANGE' (หลายวัน - Flight Style)
   const [startDate, setStartDate] = useState(todayStr);
   const [endDate, setEndDate] = useState(todayStr);
@@ -207,7 +173,8 @@ export default function DoctorLiffPage() {
   const [files, setFiles] = useState([]);
   const [reimbursementRequested, setReimbursementRequested] = useState(false);
   const [swapDate, setSwapDate] = useState('');
-  const [showAllSwapDays, setShowAllSwapDays] = useState(false);
+  const [calendarMonthOffset, setCalendarMonthOffset] = useState(0); // 0 = เดือนนี้, 1 = เดือนหน้า
+  const [calendarSelectTarget, setCalendarSelectTarget] = useState('SWAP_DATE'); // 'OFF_DATE' | 'SWAP_DATE'
 
   // Shift Conflict & Duty Handover State (Feature #26)
   const [shiftConflict, setShiftConflict] = useState(null);
@@ -388,10 +355,9 @@ export default function DoctorLiffPage() {
   const countMode = selectedType?.count_mode || 'CALENDAR_DAYS';
   const currentFinalEnd = leaveMode === 'SINGLE' || halfDayType !== 'FULL_DAY' ? startDate : (endDate || startDate);
   const effectiveHalfDay = leaveMode === 'SINGLE' ? halfDayType : 'FULL_DAY';
-  const activeShifts = durationPreview?.shifts_in_range || shiftConflict?.conflicts || [];
-  const breakdown = getLeaveBreakdown(startDate, currentFinalEnd, effectiveHalfDay, countMode, durationPreview?.holidays_in_range, activeShifts);
+  const breakdown = getLeaveBreakdown(startDate, currentFinalEnd, effectiveHalfDay);
   const activeDuration = durationPreview?.duration_days !== undefined ? Number(durationPreview.duration_days) : breakdown.netDays;
-  const returnToWorkDate = getNextWorkingDay(currentFinalEnd, durationPreview?.holidays_in_range);
+  const returnToWorkDate = getNextWorkingDay(currentFinalEnd);
 
   const selectedBalance = balances.find(b => b.leave_type_id === selectedType?.id);
   const nonDayQuotaCodes = ['TRAINING', 'PERSONAL', 'SHIFT_SWAP', 'UNPAID'];
@@ -475,6 +441,10 @@ export default function DoctorLiffPage() {
     }
     if (selectedType.code === 'SHIFT_SWAP' && !swapDate) {
       setErrorMessage('กรุณาระบุวันที่ต้องการสลับออกตรวจ');
+      return;
+    }
+    if (selectedType.code === 'SHIFT_SWAP' && (startDate > maxSwapDateStr || swapDate > maxSwapDateStr)) {
+      setErrorMessage('การลาสลับวันออกตรวจ สามารถลาล่วงหน้าได้เฉพาะเดือนนี้และเดือนหน้าเท่านั้น');
       return;
     }
 
@@ -592,6 +562,54 @@ export default function DoctorLiffPage() {
     );
   }
 
+  const isHrOnly =
+    currentDoctor.employee_id === 'EMP-KOONG' ||
+    (!(currentDoctor.roles || []).includes('DOCTOR') && !(currentDoctor.roles || []).includes('DEPT_HEAD'));
+
+  if (isHrOnly) {
+    return (
+      <div className="min-h-[80vh] bg-gradient-to-br from-slate-100 via-sky-50/50 to-slate-200 py-8 px-4 max-w-xl mx-auto flex flex-col justify-center">
+        <div className="bg-white rounded-3xl shadow-xl border border-slate-200 overflow-hidden p-6 text-center space-y-4">
+          <div className="w-16 h-16 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center mx-auto font-bold shadow-inner">
+            <ShieldCheck className="w-8 h-8" />
+          </div>
+          <div className="space-y-1">
+            <span className="inline-block px-3 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800">
+              บัญชีเจ้าหน้าที่ HR / ผู้ดูแลระบบ (Admin)
+            </span>
+            <h2 className="text-lg font-bold text-slate-900">
+              {currentDoctor.prefix_th}{currentDoctor.first_name_th} {currentDoctor.last_name_th}
+            </h2>
+            <p className="text-xs text-slate-500">
+              โทร. {currentDoctor.phone || '089-470-9256'} • ระบบนี้สำหรับแพทย์ยื่นใบลาเท่านั้น
+            </p>
+          </div>
+          <div className="p-4 bg-sky-50 border border-sky-200 rounded-2xl text-xs text-sky-900 text-left space-y-1.5">
+            <p className="font-bold">คำแนะนำสำหรับฝ่ายการแพทย์ / HR (พี่กุ้ง):</p>
+            <p className="text-[11px] text-sky-800 leading-relaxed">
+              เจ้าหน้าที่ HR ไม่ต้องยื่นใบลาของตนเองในระบบนี้ หากต้องการ <strong>บันทึกวันลาแทนแพทย์ (กรณีฉุกเฉิน/ข้อยกเว้น)</strong> หรือจัดการข้อมูลระบบ กรุณาเลือกเมนูด้านล่าง:
+            </p>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+            <Link
+              to="/admin"
+              className="py-3 px-4 rounded-xl bg-[#006699] hover:bg-[#005580] text-white font-bold text-xs flex items-center justify-center gap-2 shadow-sm"
+            >
+              <span>ไปหน้าแดชบอร์ดฝ่ายการแพทย์</span>
+              <ArrowRight className="w-4 h-4" />
+            </Link>
+            <Link
+              to="/admin/master-data"
+              className="py-3 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs flex items-center justify-center gap-2"
+            >
+              <span>จัดการสายอนุมัติ & รายชื่อแพทย์</span>
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-100 via-sky-50/50 to-slate-200 py-4 px-2.5 sm:px-6 max-w-xl md:max-w-2xl lg:max-w-3xl mx-auto flex flex-col justify-center">
 
@@ -626,14 +644,14 @@ export default function DoctorLiffPage() {
           </div>
 
           {/* Smart Profile Info Bar */}
-          <div className="mt-3 pt-2.5 border-t border-white/15 flex flex-wrap items-center justify-between gap-1.5 text-xs">
+          <div className="mt-3 pt-2.5 border-t border-white/15 flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 text-xs">
             <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 min-w-0">
-              <span className="font-semibold truncate">{currentDoctor.prefix_th}{currentDoctor.first_name_th} {currentDoctor.last_name_th}</span>
+              <span className="font-semibold">{currentDoctor.prefix_th}{currentDoctor.first_name_th} {currentDoctor.last_name_th}</span>
               <span className="text-sky-200 text-[11px] font-mono">
                 ({currentDoctor.employee_id}{currentDoctor.license_no ? ` • ${currentDoctor.license_no}` : ''})
               </span>
             </div>
-            <span className="text-sky-100 bg-sky-950/35 px-2 py-0.5 rounded-md text-[11px] font-medium shrink-0">
+            <span className="text-sky-100 bg-sky-950/35 px-2.5 py-0.5 rounded-md text-[11px] font-medium self-start sm:self-auto max-w-full truncate">
               แผนก{currentDoctor.department_name || 'อายุรกรรม'}
             </span>
           </div>
@@ -693,7 +711,7 @@ export default function DoctorLiffPage() {
                         style={{ backgroundColor: isFull ? '#ef4444' : (lt.color || '#0ea5e9') }}
                       />
                     </div>
-                    <div className="text-[10px] text-slate-500 mt-2 pt-1.5 border-t border-slate-100/80 flex items-center justify-between gap-1 relative z-10">
+                    <div className="text-[10px] text-slate-500 mt-2 pt-1.5 border-t border-slate-100/80 flex flex-wrap items-center justify-between gap-1 relative z-10">
                       <span className="truncate text-[9px] sm:text-[10px] text-slate-400">
                         {lt.allows_half_day ? 'ครึ่งวันได้' : 'เต็มวัน'}
                       </span>
@@ -778,7 +796,8 @@ export default function DoctorLiffPage() {
                     )}
                     {selectedType.code === 'SHIFT_SWAP' && (
                       <ul className="text-[11px] text-slate-600 list-disc list-inside space-y-0.5">
-                        <li>สำหรับขอหยุดแบบสลับวันออกตรวจ (เลือกวันที่ขอหยุดในข้อ 2 แล้วเลือกวันที่จะสลับไปออกตรวจแทนด้านล่าง)</li>
+                        <li>สำหรับขอหยุดแบบสลับวันออกตรวจ <strong>ลาล่วงหน้าได้เฉพาะเดือนนี้และเดือนหน้าเท่านั้น</strong></li>
+                        <li>คลิกเลือกวันจาก <strong>ปฏิทินเช็คแพทย์ออกตรวจคงเหลือ</strong> ด้านล่างได้เลย</li>
                       </ul>
                     )}
                     {selectedType.code === 'SICK' && (
@@ -881,26 +900,40 @@ export default function DoctorLiffPage() {
               /* FRIENDLY SIDE-BY-SIDE CARD FOR SHIFT SWAP (ลาสลับวันออกตรวจ)  */
               /* ============================================================ */
               <div className="space-y-3 animate-in fade-in">
-                <label className="block text-xs font-bold text-slate-700">
-                  2. เลือกวันหยุดเดิม และวันที่จะสลับไปออกตรวจแทน <span className="text-rose-500">*</span>
-                </label>
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <label className="block text-xs font-bold text-slate-700">
+                    2. เลือกวันหยุดเดิม และวันที่จะสลับไปออกตรวจแทน <span className="text-rose-500">*</span>
+                  </label>
+                  <span className="text-[10px] font-bold text-[#006699] bg-sky-50 px-2 py-0.5 rounded-full border border-sky-200">
+                    ลาล่วงหน้าได้เฉพาะเดือนนี้และเดือนหน้า
+                  </span>
+                </div>
 
                 {/* Step A (วันขอหยุด) ➔ Step B (วันสลับไปออกตรวจแทน) */}
                 <div className="grid grid-cols-1 md:grid-cols-11 gap-2.5 items-stretch">
                   {/* Left Box: วันที่ขอหยุดตรวจ */}
-                  <div className="md:col-span-5 p-3.5 bg-amber-50/50 rounded-2xl border border-amber-200 space-y-2 flex flex-col justify-between">
+                  <div
+                    onClick={() => setCalendarSelectTarget('OFF_DATE')}
+                    className={`md:col-span-5 p-3 sm:p-3.5 bg-amber-50/50 rounded-2xl border space-y-2 flex flex-col justify-between cursor-pointer transition-all ${
+                      calendarSelectTarget === 'OFF_DATE'
+                        ? 'border-amber-500 ring-2 ring-amber-200 shadow-xs'
+                        : 'border-amber-200 hover:border-amber-300'
+                    }`}
+                  >
                     <div className="space-y-1.5">
-                      <div className="flex items-center justify-between gap-1">
+                      <div className="flex items-center justify-between gap-1 flex-wrap">
                         <span className="text-xs font-bold text-amber-950 flex items-center gap-1.5">
-                          <span className="w-5 h-5 rounded-full bg-amber-500 text-white text-[11px] font-bold inline-flex items-center justify-center">1</span>
-                          วันที่ขอหยุดออกตรวจ <span className="text-rose-500">*</span>
+                          <span className="w-5 h-5 rounded-full bg-amber-500 text-white text-[11px] font-bold inline-flex items-center justify-center shrink-0">1</span>
+                          <span>วันที่ขอหยุดออกตรวจ <span className="text-rose-500">*</span></span>
                         </span>
-                        <span className="text-[11px] font-bold text-amber-800 bg-white px-2 py-0.5 rounded-full border border-amber-200">
+                        <span className="text-[11px] font-bold text-amber-800 bg-white px-2 py-0.5 rounded-full border border-amber-200 shrink-0">
                           {formatThaiDateShort(startDate)}
                         </span>
                       </div>
                       <input
                         type="date"
+                        min={todayStr}
+                        max={maxSwapDateStr}
                         value={startDate}
                         onChange={(e) => {
                           const val = e.target.value;
@@ -913,11 +946,11 @@ export default function DoctorLiffPage() {
                     </div>
                     {quotaInfo && (
                       <div className="space-y-1">
-                        <div className="text-[11px] text-amber-900 bg-white/90 px-2.5 py-1.5 rounded-lg border border-amber-200/80 flex items-center justify-between">
-                          <span>แพทย์{quotaInfo.scope_name || quotaInfo.department_name}วันนั้น:</span>
-                          <strong className="text-amber-950">
+                        <div className="text-[11px] text-amber-900 bg-white/95 px-2.5 py-1.5 rounded-lg border border-amber-200/80 flex items-center justify-between gap-2 flex-wrap">
+                          <span className="text-slate-600 font-medium">แพทย์คงเหลือวันนั้น:</span>
+                          <strong className="text-amber-950 shrink-0">
                             เหลือ {quotaInfo.remaining_doctors_count ?? 0} / {quotaInfo.total_doctors ?? 0} ท่าน
-                            {quotaInfo.min_staff_required ? ` (เกณฑ์ขั้นต่ำ ${quotaInfo.min_staff_required} ท่าน)` : ''}
+                            {quotaInfo.min_staff_required ? ` (ขั้นต่ำ ${quotaInfo.min_staff_required})` : ''}
                           </strong>
                         </div>
                         {quotaInfo.status === 'FULL' && (
@@ -932,26 +965,35 @@ export default function DoctorLiffPage() {
                   {/* Arrow Connector */}
                   <div className="md:col-span-1 flex items-center justify-center py-0.5">
                     <div className="w-7 h-7 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold shadow-2xs">
-                      <ArrowRight className="w-4 h-4" />
+                      <ArrowRight className="w-4 h-4 rotate-90 md:rotate-0" />
                     </div>
                   </div>
 
                   {/* Right Box: วันที่จะสลับไปออกตรวจแทน */}
-                  <div className="md:col-span-5 p-3.5 bg-emerald-50/60 rounded-2xl border border-emerald-300 space-y-2 flex flex-col justify-between">
+                  <div
+                    onClick={() => setCalendarSelectTarget('SWAP_DATE')}
+                    className={`md:col-span-5 p-3 sm:p-3.5 bg-emerald-50/60 rounded-2xl border space-y-2 flex flex-col justify-between cursor-pointer transition-all ${
+                      calendarSelectTarget === 'SWAP_DATE'
+                        ? 'border-emerald-600 ring-2 ring-emerald-200 shadow-xs'
+                        : 'border-emerald-300 hover:border-emerald-400'
+                    }`}
+                  >
                     <div className="space-y-1.5">
-                      <div className="flex items-center justify-between gap-1">
+                      <div className="flex items-center justify-between gap-1 flex-wrap">
                         <span className="text-xs font-bold text-emerald-950 flex items-center gap-1.5">
-                          <span className="w-5 h-5 rounded-full bg-emerald-600 text-white text-[11px] font-bold inline-flex items-center justify-center">2</span>
-                          สลับไปออกตรวจวันที่ <span className="text-rose-500">*</span>
+                          <span className="w-5 h-5 rounded-full bg-emerald-600 text-white text-[11px] font-bold inline-flex items-center justify-center shrink-0">2</span>
+                          <span>สลับไปออกตรวจวันที่ <span className="text-rose-500">*</span></span>
                         </span>
                         {swapDate && (
-                          <span className="text-[11px] font-bold text-emerald-800 bg-white px-2 py-0.5 rounded-full border border-emerald-200">
+                          <span className="text-[11px] font-bold text-emerald-800 bg-white px-2 py-0.5 rounded-full border border-emerald-200 shrink-0">
                             {formatThaiDateShort(swapDate)}
                           </span>
                         )}
                       </div>
                       <input
                         type="date"
+                        min={todayStr}
+                        max={maxSwapDateStr}
                         value={swapDate}
                         onChange={(e) => setSwapDate(e.target.value)}
                         className="w-full text-xs p-2.5 rounded-xl border border-emerald-400 bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-hidden font-semibold text-slate-800"
@@ -959,114 +1001,242 @@ export default function DoctorLiffPage() {
                       />
                     </div>
                     {swapDate && swapQuotaInfo ? (
-                      <div className="text-[11px] text-emerald-900 bg-white/95 px-2.5 py-1.5 rounded-lg border border-emerald-200 flex items-center justify-between">
-                        <span>แพทย์ออกตรวจวันนั้น:</span>
-                        <strong className="text-emerald-700">
+                      <div className="text-[11px] text-emerald-900 bg-white/95 px-2.5 py-1.5 rounded-lg border border-emerald-200 flex items-center justify-between gap-2 flex-wrap">
+                        <span className="text-slate-600 font-medium">แพทย์คงเหลือวันนั้น:</span>
+                        <strong className="text-emerald-700 shrink-0">
                           เหลือ {swapQuotaInfo.remaining_doctors_count ?? 0} / {swapQuotaInfo.total_doctors ?? 0} ท่าน
                         </strong>
                       </div>
                     ) : (
                       <div className="text-[11px] text-emerald-700 px-1 font-medium">
-                        💡 คลิกเลือกวันจากตารางด้านล่างได้เลย (ระบบแสดงจำนวนแพทย์คงเหลือแต่ละวัน)
+                        💡 คลิกเลือกวันจากปฏิทินด้านล่างได้เลย
                       </div>
                     )}
                   </div>
                 </div>
 
-                {/* Quick Day Picker Strip showing Remaining Doctors per day */}
-                {quotaInfo?.upcoming_days && quotaInfo.upcoming_days.length > 0 && (
-                  <div className="p-3 bg-white rounded-2xl border border-slate-200 space-y-2 shadow-2xs">
-                    <div className="flex items-center justify-between gap-2 flex-wrap">
-                      <span className="text-xs font-bold text-slate-700">
-                        📅 เช็คจำนวนแพทย์ออกตรวจคงเหลือ ({quotaInfo.scope_name || quotaInfo.department_name}) แตะเพื่อเลือกวันสลับตรวจ
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => setShowAllSwapDays(!showAllSwapDays)}
-                        className="text-[11px] font-bold text-[#006699] hover:underline cursor-pointer"
-                      >
-                        {showAllSwapDays ? 'แสดง 7 วัน' : 'ดูเพิ่ม 14 วัน →'}
-                      </button>
-                    </div>
+                {/* Interactive Monthly Calendar Grid showing Remaining Doctors per day (Current Month & Next Month) */}
+                {quotaInfo?.upcoming_days && quotaInfo.upcoming_days.length > 0 && (() => {
+                  const nowD = new Date();
+                  const viewDate = new Date(nowD.getFullYear(), nowD.getMonth() + calendarMonthOffset, 1);
+                  const viewYear = viewDate.getFullYear();
+                  const viewMonth = viewDate.getMonth();
+                  const monthsFullTh = [
+                    'มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',
+                    'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'
+                  ];
+                  const curMonthLabel = `${monthsFullTh[nowD.getMonth()]} ${nowD.getFullYear() + 543}`;
+                  const nextD = new Date(nowD.getFullYear(), nowD.getMonth() + 1, 1);
+                  const nextMonthLabel = `${monthsFullTh[nextD.getMonth()]} ${nextD.getFullYear() + 543}`;
 
-                    <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-1.5">
-                      {quotaInfo.upcoming_days.slice(0, showAllSwapDays ? 14 : 7).map((day) => {
-                        const isPickedSwap = swapDate === day.date;
-                        const isRequestedOff = day.date === startDate;
-                        const rem = day.remaining_doctors_count ?? 0;
-                        const tot = day.total_doctors ?? 0;
-                        const minStaff = day.min_staff_required;
-                        const isFull = day.status === 'FULL' || (minStaff && rem < minStaff);
-                        const isNear = day.status === 'NEAR_LIMIT' || (minStaff && rem === minStaff);
+                  const firstDayOfWeek = new Date(viewYear, viewMonth, 1).getDay(); // 0 (Sun) - 6 (Sat)
+                  const daysInViewMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+                  const dayMap = {};
+                  (quotaInfo.upcoming_days || []).forEach(d => {
+                    dayMap[d.date] = d;
+                  });
 
-                        return (
+                  const cells = [];
+                  for (let b = 0; b < firstDayOfWeek; b++) {
+                    cells.push(null);
+                  }
+                  for (let dayNum = 1; dayNum <= daysInViewMonth; dayNum++) {
+                    const dStr = `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
+                    cells.push({
+                      dayNum,
+                      dateStr: dStr,
+                      info: dayMap[dStr] || null
+                    });
+                  }
+
+                  return (
+                    <div className="p-3 sm:p-4 bg-white rounded-2xl border border-slate-200 space-y-3 shadow-2xs">
+                      {/* Header & Target Mode Selector */}
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-slate-100">
+                        <div>
+                          <span className="text-xs font-bold text-slate-800 block">
+                            📅 ปฏิทินเช็คจำนวนแพทย์ออกตรวจคงเหลือ ({quotaInfo.scope_name || quotaInfo.department_name})
+                          </span>
+                          <span className="text-[11px] text-slate-500">
+                            คลิกวันที่ในปฏิทินเพื่อเลือก {calendarSelectTarget === 'OFF_DATE' ? 'วันที่ขอหยุดออกตรวจ (ช่องที่ 1)' : 'วันที่สลับไปออกตรวจแทน (ช่องที่ 2)'}
+                          </span>
+                        </div>
+
+                        {/* Click Target Switcher */}
+                        <div className="inline-flex p-1 bg-slate-100 rounded-xl border border-slate-200 text-[11px] font-bold self-start sm:self-auto">
                           <button
                             type="button"
-                            key={day.date}
-                            onClick={() => setSwapDate(day.date)}
-                            className={`p-2 rounded-xl border text-center transition-all flex flex-col items-center justify-between gap-1 cursor-pointer ${
-                              isPickedSwap
-                                ? 'bg-emerald-600 text-white border-emerald-600 ring-2 ring-emerald-200 shadow-xs'
-                                : isRequestedOff
-                                ? 'bg-amber-50 border-amber-300 text-amber-900'
-                                : isFull
-                                ? 'bg-rose-50/70 border-rose-200 hover:border-rose-400 text-rose-900'
-                                : isNear
-                                ? 'bg-amber-50/60 border-amber-200 hover:border-amber-400 text-amber-900'
-                                : 'bg-slate-50/70 border-slate-200 hover:border-emerald-400 hover:bg-white text-slate-800'
+                            onClick={() => setCalendarSelectTarget('OFF_DATE')}
+                            className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                              calendarSelectTarget === 'OFF_DATE'
+                                ? 'bg-amber-500 text-white shadow-2xs'
+                                : 'text-slate-600 hover:text-slate-900'
                             }`}
                           >
-                            <div className={`text-[11px] font-bold whitespace-nowrap ${isPickedSwap ? 'text-white' : 'text-slate-800'}`}>
-                              {formatThaiDateShort(day.date)}
-                            </div>
-
-                            <div className={`w-full py-0.5 px-1 rounded text-[11px] font-extrabold whitespace-nowrap ${
-                              isPickedSwap
-                                ? 'bg-white text-emerald-700'
-                                : isFull
-                                ? 'bg-rose-100 text-rose-700'
-                                : isNear
-                                ? 'bg-amber-100 text-amber-800'
-                                : rem === tot
-                                ? 'bg-emerald-100/80 text-emerald-800'
-                                : 'bg-sky-100 text-[#006699]'
-                            }`}>
-                              เหลือ {rem}/{tot} ท่าน
-                            </div>
-
-                            <div className="text-[10px] font-medium whitespace-nowrap">
-                              {isPickedSwap ? (
-                                <span className="text-white font-bold">✓ วันสลับตรวจ</span>
-                              ) : isRequestedOff ? (
-                                <span className="text-amber-700 font-bold">วันขอหยุด</span>
-                              ) : isFull ? (
-                                <span className="text-rose-600 font-bold">⚠️ ต่ำกว่าเกณฑ์</span>
-                              ) : isNear ? (
-                                <span className="text-amber-700 font-bold">⚡ ใกล้เกณฑ์</span>
-                              ) : day.current_on_leave > 0 ? (
-                                <span className="text-slate-600">ลา {day.current_on_leave} ท่าน</span>
-                              ) : (
-                                <span className="text-emerald-700 font-medium">✓ อยู่ครบ</span>
-                              )}
-                            </div>
+                            1. เลือกวันหยุด
                           </button>
-                        );
-                      })}
-                    </div>
-
-                    {/* Show doctors on duty on the selected swap date */}
-                    {swapDate && swapQuotaInfo?.available_doctors?.length > 0 && (
-                      <div className="pt-1.5 border-t border-slate-100 flex items-center justify-between gap-2 flex-wrap text-[11px] text-slate-600">
-                        <div>
-                          แพทย์ที่ออกตรวจวัน{formatThaiDateShort(swapDate)}:{' '}
-                          <strong className="text-slate-800">
-                            {swapQuotaInfo.available_doctors.map(d => d.short_name).join(', ')}
-                          </strong>
+                          <button
+                            type="button"
+                            onClick={() => setCalendarSelectTarget('SWAP_DATE')}
+                            className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                              calendarSelectTarget === 'SWAP_DATE'
+                                ? 'bg-emerald-600 text-white shadow-2xs'
+                                : 'text-slate-600 hover:text-slate-900'
+                            }`}
+                          >
+                            2. เลือกวันสลับตรวจ
+                          </button>
                         </div>
                       </div>
-                    )}
-                  </div>
-                )}
+
+                      {/* Month Switcher Tabs: เดือนนี้ vs เดือนหน้า */}
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setCalendarMonthOffset(0)}
+                          className={`py-2 px-3 rounded-xl text-xs font-bold border transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                            calendarMonthOffset === 0
+                              ? 'bg-[#006699] text-white border-[#006699] shadow-xs'
+                              : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                          }`}
+                        >
+                          <Calendar className="w-3.5 h-3.5 shrink-0" />
+                          <span>เดือนนี้ ({curMonthLabel})</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setCalendarMonthOffset(1)}
+                          className={`py-2 px-3 rounded-xl text-xs font-bold border transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                            calendarMonthOffset === 1
+                              ? 'bg-[#006699] text-white border-[#006699] shadow-xs'
+                              : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                          }`}
+                        >
+                          <CalendarDays className="w-3.5 h-3.5 shrink-0" />
+                          <span>เดือนหน้า ({nextMonthLabel})</span>
+                        </button>
+                      </div>
+
+                      {/* Day of Week Header */}
+                      <div className="grid grid-cols-7 gap-1 text-center text-[10px] sm:text-[11px] font-bold text-slate-500 pt-1">
+                        <div className="text-rose-500">อา.</div>
+                        <div>จ.</div>
+                        <div>อ.</div>
+                        <div>พ.</div>
+                        <div>พฤ.</div>
+                        <div>ศ.</div>
+                        <div className="text-sky-600">ส.</div>
+                      </div>
+
+                      {/* 7-Column Calendar Days Grid */}
+                      <div className="grid grid-cols-7 gap-1 sm:gap-1.5">
+                        {cells.map((cell, idx) => {
+                          if (!cell) {
+                            return <div key={`blank-${idx}`} className="min-h-[52px] sm:min-h-[62px] rounded-xl bg-slate-50/40" />;
+                          }
+                          const { dayNum, dateStr, info } = cell;
+                          const isPast = dateStr < todayStr;
+                          const isPickedOff = dateStr === startDate;
+                          const isPickedSwap = dateStr === swapDate;
+                          const rem = info?.remaining_doctors_count ?? quotaInfo.total_doctors ?? 0;
+                          const tot = info?.total_doctors ?? quotaInfo.total_doctors ?? 0;
+                          const minStaff = info?.min_staff_required ?? quotaInfo.min_staff_required;
+                          const isFull = info?.status === 'FULL' || (minStaff && rem < minStaff);
+                          const isNear = info?.status === 'NEAR_LIMIT' || (minStaff && rem === minStaff);
+
+                          return (
+                            <button
+                              type="button"
+                              key={dateStr}
+                              disabled={isPast}
+                              onClick={() => {
+                                if (calendarSelectTarget === 'OFF_DATE') {
+                                  setStartDate(dateStr);
+                                  setEndDate(dateStr);
+                                  setCalendarSelectTarget('SWAP_DATE');
+                                } else {
+                                  setSwapDate(dateStr);
+                                }
+                              }}
+                              className={`min-h-[54px] sm:min-h-[64px] p-1 sm:p-1.5 rounded-xl border text-center transition-all flex flex-col items-center justify-between ${
+                                isPast
+                                  ? 'bg-slate-100/60 border-slate-100 text-slate-300 cursor-not-allowed opacity-60'
+                                  : isPickedSwap
+                                  ? 'bg-emerald-600 text-white border-emerald-600 ring-2 ring-emerald-200 shadow-xs cursor-pointer'
+                                  : isPickedOff
+                                  ? 'bg-amber-500 text-white border-amber-500 ring-2 ring-amber-200 shadow-xs cursor-pointer'
+                                  : isFull
+                                  ? 'bg-rose-50/80 border-rose-200 hover:border-rose-400 text-rose-900 cursor-pointer'
+                                  : isNear
+                                  ? 'bg-amber-50/70 border-amber-200 hover:border-amber-400 text-amber-900 cursor-pointer'
+                                  : 'bg-white border-slate-200 hover:border-[#006699] hover:bg-sky-50/40 text-slate-800 cursor-pointer'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between w-full px-0.5">
+                                <span className={`text-[11px] sm:text-xs font-extrabold ${
+                                  isPickedSwap || isPickedOff ? 'text-white' : isPast ? 'text-slate-400' : 'text-slate-800'
+                                }`}>
+                                  {dayNum}
+                                </span>
+                                {(isPickedOff || isPickedSwap) && (
+                                  <span className="text-[8px] sm:text-[9px] font-bold bg-white/25 px-1 rounded text-white">
+                                    {isPickedOff ? 'หยุด' : 'สลับ'}
+                                  </span>
+                                )}
+                              </div>
+
+                              <div className={`w-full py-0.5 px-0.5 rounded text-[9px] sm:text-[10px] font-bold leading-tight truncate ${
+                                isPast
+                                  ? 'bg-slate-100 text-slate-400'
+                                  : isPickedSwap
+                                  ? 'bg-white text-emerald-700'
+                                  : isPickedOff
+                                  ? 'bg-white text-amber-800'
+                                  : isFull
+                                  ? 'bg-rose-100 text-rose-700'
+                                  : isNear
+                                  ? 'bg-amber-100 text-amber-800'
+                                  : 'bg-emerald-50 text-emerald-700'
+                              }`}>
+                                <span className="hidden sm:inline">เหลือ </span>{rem}/{tot}
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {/* Legend & Doctors on duty on selected swap date */}
+                      <div className="pt-2 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-[10px] sm:text-[11px] text-slate-500">
+                        <div className="flex flex-wrap items-center gap-2.5">
+                          <span className="inline-flex items-center gap-1">
+                            <span className="w-2.5 h-2.5 rounded bg-amber-500 inline-block" /> วันขอหยุด
+                          </span>
+                          <span className="inline-flex items-center gap-1">
+                            <span className="w-2.5 h-2.5 rounded bg-emerald-600 inline-block" /> วันสลับตรวจ
+                          </span>
+                          <span className="inline-flex items-center gap-1">
+                            <span className="w-2.5 h-2.5 rounded bg-emerald-100 border border-emerald-300 inline-block" /> ปกติ
+                          </span>
+                          <span className="inline-flex items-center gap-1">
+                            <span className="w-2.5 h-2.5 rounded bg-amber-100 border border-amber-300 inline-block" /> พอดีเกณฑ์ขั้นต่ำ
+                          </span>
+                          <span className="inline-flex items-center gap-1">
+                            <span className="w-2.5 h-2.5 rounded bg-rose-100 border border-rose-300 inline-block" /> ต่ำกว่าเกณฑ์
+                          </span>
+                        </div>
+
+                        {swapDate && swapQuotaInfo?.available_doctors?.length > 0 && (
+                          <div className="text-slate-600">
+                            แพทย์ที่ออกตรวจวัน{formatThaiDateShort(swapDate)}:{' '}
+                            <strong className="text-slate-800">
+                              {swapQuotaInfo.available_doctors.map(d => d.short_name).join(', ')}
+                            </strong>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {/* Optional: Colleague to swap with */}
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
@@ -1239,7 +1409,7 @@ export default function DoctorLiffPage() {
                           <div className="h-px bg-sky-200 flex-1" />
                           <span className="text-[11px] font-bold text-[#006699] flex items-center gap-1 bg-white px-2.5 py-0.5 rounded-full border border-sky-200 shadow-2xs">
                             <ArrowRight className="w-3 h-3 text-[#006699]" />
-                            {activeDuration} วันทำการ
+                            {activeDuration} วัน
                           </span>
                           <div className="h-px bg-sky-200 flex-1" />
                         </div>
@@ -1349,7 +1519,7 @@ export default function DoctorLiffPage() {
                   <CheckCircle className="w-4 h-4 text-[#006699] shrink-0" />
                   <div>
                     <span className="font-bold text-[#006699]">เต็มวันตลอดช่วง (Full Day)</span>
-                    <p className="text-[11px] text-slate-500">ระบบคำนวณวันลาตามปฏิทิน (นับรวมวันหยุดประจำ)</p>
+                    <p className="text-[11px] text-slate-500">ระบบคำนวณวันลาตามปฏิทิน (นับรวมทุกวัน แพทย์ไม่มีวันหยุดเสาร์-อาทิตย์)</p>
                   </div>
                 </div>
                 <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-white border border-sky-200 text-[#006699] shadow-2xs">
@@ -1436,20 +1606,14 @@ export default function DoctorLiffPage() {
               {/* Action: Contact Admin (P'Koong) for Override */}
               <div className="pt-2 border-t border-rose-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <span className="text-[11px] text-rose-700 font-medium">
-                  กรณีมีเหตุจำเป็นเร่งด่วน กรุณาติดต่อฝ่ายการแพทย์ (พี่กุ้ง) เพื่อพิจารณาเป็นกรณีพิเศษ:
+                  กรณีมีเหตุจำเป็นเร่งด่วน กรุณาติดต่อคุณธัญญธร ตันติกุล (พี่กุ้ง) เพื่อพิจารณาเป็นกรณีพิเศษ:
                 </span>
-                <div className="flex items-center gap-2 shrink-0">
+                <div className="flex items-center gap-2 shrink-0 flex-wrap">
                   <a
-                    href="tel:076361888,1234"
-                    className="inline-flex items-center gap-1 px-3 py-1 bg-white text-rose-800 rounded-lg border border-rose-300 font-bold text-[11px] hover:bg-rose-100 transition-colors shadow-2xs"
-                  >
-                    📞 พี่กุ้ง (ต่อ 1234)
-                  </a>
-                  <a
-                    href="tel:0819998888"
+                    href="tel:0894709256"
                     className="inline-flex items-center gap-1 px-3 py-1 bg-rose-600 text-white rounded-lg font-bold text-[11px] hover:bg-rose-700 transition-colors shadow-2xs"
                   >
-                    📱 081-999-8888
+                    📱 โทรติดต่อพี่กุ้ง (089-470-9256)
                   </a>
                 </div>
               </div>

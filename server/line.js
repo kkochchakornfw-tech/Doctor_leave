@@ -1291,9 +1291,40 @@ export function buildContactCardFlex(settings = {}) {
   const location = settings.location || 'อาคาร A ชั้น 3 ฝ่ายการแพทย์ รพ.กรุงเทพศิริโรจน์';
   const cleanDialNumber = (phoneHotline || phoneEmergency).replace(/[^0-9]/g, '');
 
+  const isSamePhone = phoneEmergency === phoneHotline || !phoneEmergency;
+  const phoneRows = isSamePhone ? [
+    {
+      type: 'box',
+      layout: 'horizontal',
+      margin: 'sm',
+      contents: [
+        { type: 'text', text: 'เบอร์โทรติดต่อ:', size: 'xs', color: '#64748b', flex: 4 },
+        { type: 'text', text: phoneHotline || phoneEmergency, size: 'xs', weight: 'bold', color: '#006699', flex: 6 }
+      ]
+    }
+  ] : [
+    {
+      type: 'box',
+      layout: 'horizontal',
+      margin: 'sm',
+      contents: [
+        { type: 'text', text: 'เบอร์หลัก รพ.:', size: 'xs', color: '#64748b', flex: 4 },
+        { type: 'text', text: `${phoneEmergency}${phoneExt}`, size: 'xs', weight: 'bold', color: '#0f172a', flex: 6 }
+      ]
+    },
+    {
+      type: 'box',
+      layout: 'horizontal',
+      contents: [
+        { type: 'text', text: 'สายด่วนมือถือ:', size: 'xs', color: '#64748b', flex: 4 },
+        { type: 'text', text: phoneHotline, size: 'xs', weight: 'bold', color: '#e11d48', flex: 6 }
+      ]
+    }
+  ];
+
   return {
     type: 'flex',
-    altText: `📞 ติดต่อ${deptName}: โทร ${phoneEmergency}${phoneExt} หรือสายด่วน ${phoneHotline}`,
+    altText: `📞 ติดต่อ${deptName}: โทร ${phoneHotline || phoneEmergency}`,
     contents: {
       type: 'bubble',
       size: 'mega',
@@ -1343,23 +1374,7 @@ export function buildContactCardFlex(settings = {}) {
             type: 'separator',
             margin: 'sm'
           },
-          {
-            type: 'box',
-            layout: 'horizontal',
-            margin: 'sm',
-            contents: [
-              { type: 'text', text: 'เบอร์หลัก รพ.:', size: 'xs', color: '#64748b', flex: 4 },
-              { type: 'text', text: `${phoneEmergency}${phoneExt}`, size: 'xs', weight: 'bold', color: '#0f172a', flex: 6 }
-            ]
-          },
-          {
-            type: 'box',
-            layout: 'horizontal',
-            contents: [
-              { type: 'text', text: 'สายด่วน 24 ชม.:', size: 'xs', color: '#64748b', flex: 4 },
-              { type: 'text', text: phoneHotline, size: 'xs', weight: 'bold', color: '#e11d48', flex: 6 }
-            ]
-          },
+          ...phoneRows,
           {
             type: 'box',
             layout: 'horizontal',

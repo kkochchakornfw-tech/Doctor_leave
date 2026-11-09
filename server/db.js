@@ -245,95 +245,13 @@ const getInitialSeedData = () => {
   };
 
   const contact_settings = {
-    department_name: 'ฝ่ายการแพทย์ (Medical Affairs)',
-    coordinator_name: 'คุณสิริมาศ',
-    phone_emergency: '076-361-888',
-    phone_ext: '1234',
-    phone_hotline: '081-999-8888',
-    email: 'medical_affairs@bsi.hospital',
-    location: 'อาคาร A ชั้น 3 ฝ่ายการแพทย์ โรงพยาบาลกรุงเทพศิริโรจน์',
+    coordinator_name: 'คุณธัญญธร ตันติกุล (พี่กุ้ง)',
+    phone_hotline: '089-470-9256',
+    phone_emergency: '089-470-9256',
     notify_line: true
   };
 
-  const getOffsetDate = (offsetDays) => {
-    const d = new Date(Date.now() + offsetDays * 86400000);
-    return d.toISOString().split('T')[0];
-  };
-
-  const doctor_shifts = [
-    {
-      id: '00000000-0000-0000-0000-000000002001',
-      doctor_id: 'c0000000-0000-0000-0000-000000000003', // Dr. Chartchai
-      shift_date: getOffsetDate(1),
-      shift_type: 'OPD_MORNING',
-      department_id: 'd1111111-1111-1111-1111-111111111111',
-      start_time: '08:00',
-      end_time: '12:00',
-      status: 'SCHEDULED',
-      substitute_doctor_id: null,
-      notes: 'ตรวจผู้ป่วยนอกอายุรกรรมทั่วไป คลินิก 1'
-    },
-    {
-      id: '00000000-0000-0000-0000-000000002002',
-      doctor_id: 'c0000000-0000-0000-0000-000000000003', // Dr. Chartchai
-      shift_date: getOffsetDate(3),
-      shift_type: 'ER_DUTY',
-      department_id: 'd1111111-1111-1111-1111-111111111111',
-      start_time: '08:00',
-      end_time: '20:00',
-      status: 'SCHEDULED',
-      substitute_doctor_id: null,
-      notes: 'เวรแพทย์ฉุกเฉินชั้น 1 (Emergency Department)'
-    },
-    {
-      id: '00000000-0000-0000-0000-000000002003',
-      doctor_id: 'c0000000-0000-0000-0000-000000000003', // Dr. Chartchai
-      shift_date: getOffsetDate(7),
-      shift_type: 'NIGHT_DUTY',
-      department_id: 'd1111111-1111-1111-1111-111111111111',
-      start_time: '20:00',
-      end_time: '08:00',
-      status: 'SCHEDULED',
-      substitute_doctor_id: null,
-      notes: 'เวรดึกประจำตึกอายุรกรรม'
-    },
-    {
-      id: '00000000-0000-0000-0000-000000002004',
-      doctor_id: 'c0000000-0000-0000-0000-000000000011', // Dr. Thanwa (Head MED)
-      shift_date: getOffsetDate(1),
-      shift_type: 'IPD_ROUND',
-      department_id: 'd1111111-1111-1111-1111-111111111111',
-      start_time: '09:00',
-      end_time: '13:00',
-      status: 'SCHEDULED',
-      substitute_doctor_id: null,
-      notes: 'ตรวจเยี่ยมผู้ป่วยใน Ward 5 & ICU'
-    },
-    {
-      id: '00000000-0000-0000-0000-000000002005',
-      doctor_id: 'c0000000-0000-0000-0000-000000000011', // Dr. Thanwa (Head MED)
-      shift_date: getOffsetDate(2),
-      shift_type: 'OPD_AFTERNOON',
-      department_id: 'd1111111-1111-1111-1111-111111111111',
-      start_time: '13:00',
-      end_time: '17:00',
-      status: 'SCHEDULED',
-      substitute_doctor_id: null,
-      notes: 'ตรวจผู้ป่วยนอกเฉพาะทางโรคหัวใจ'
-    },
-    {
-      id: '00000000-0000-0000-0000-000000002006',
-      doctor_id: 'c0000000-0000-0000-0000-000000000004', // Dr. Kantheera (PT)
-      shift_date: getOffsetDate(2),
-      shift_type: 'ON_CALL',
-      department_id: 'd1111111-1111-1111-1111-111111111111',
-      start_time: '08:00',
-      end_time: '20:00',
-      status: 'SCHEDULED',
-      substitute_doctor_id: null,
-      notes: 'แพทย์เวรให้คำปรึกษาทางโทรศัพท์'
-    }
-  ];
+  const doctor_shifts = [];
 
   return {
     departments,
@@ -387,7 +305,9 @@ export const initStore = async () => {
     db.tenure_rules = seed.tenure_rules;
   }
   if (!db.tenure_settings) db.tenure_settings = seed.tenure_settings;
-  if (!db.contact_settings) db.contact_settings = seed.contact_settings;
+  if (!db.contact_settings || db.contact_settings.coordinator_name === 'คุณสิริมาศ' || db.contact_settings.phone_emergency === '076-361-888') {
+    db.contact_settings = seed.contact_settings;
+  }
   if (!db.doctor_shifts) db.doctor_shifts = seed.doctor_shifts;
 
   // Migrate/sync leave_types with latest policy requirements and deduplicate by code
@@ -423,15 +343,28 @@ export const initStore = async () => {
     });
   }
 
-  // Sync departments with latest master departments (add OBGYN, update min_staff_required, staffing_groups)
+  // Sync departments with latest master departments (add OBGYN, update min_staff_required, staffing_groups, staffing_mode, head_doctor_id)
   if (!db.departments) {
     db.departments = seed.departments;
   } else {
     seed.departments.forEach(seedDept => {
       const existing = db.departments.find(dp => dp.id === seedDept.id || dp.code === seedDept.code);
       if (existing) {
-        existing.min_staff_required = seedDept.min_staff_required;
-        if (seedDept.staffing_groups) existing.staffing_groups = seedDept.staffing_groups;
+        if (existing.min_staff_required === undefined || existing.min_staff_required === 0) {
+          existing.min_staff_required = seedDept.min_staff_required;
+        }
+        if (!existing.staffing_mode) {
+          existing.staffing_mode = seedDept.staffing_mode || 'DEPARTMENT';
+        }
+        if ((!existing.staffing_groups || existing.staffing_groups.length === 0) && seedDept.staffing_groups?.length > 0) {
+          existing.staffing_groups = seedDept.staffing_groups;
+        }
+        if (!existing.head_doctor_id && seedDept.head_doctor_id) {
+          existing.head_doctor_id = seedDept.head_doctor_id;
+        }
+        if (!existing.final_approver_id && seedDept.final_approver_id) {
+          existing.final_approver_id = seedDept.final_approver_id;
+        }
         if (seedDept.name_th) existing.name_th = seedDept.name_th;
       } else {
         db.departments.push(seedDept);
@@ -439,16 +372,32 @@ export const initStore = async () => {
     });
   }
 
-  // Sync doctors with latest seed (add Dr. Manop, Dr. Thipsuda, Dr. Theeraphat, Dr. Piyada, set specialty_group)
+  // Sync doctors with latest seed (update EMP-KOONG real name/phone, add Dr. Manop, Dr. Thipsuda, Dr. Theeraphat, Dr. Piyada, set specialty_group)
   seed.doctors.forEach(seedDoc => {
     const existing = db.doctors.find(d => d.id === seedDoc.id || d.employee_id === seedDoc.employee_id);
     if (existing) {
-      if (seedDoc.specialty_group) existing.specialty_group = seedDoc.specialty_group;
-      if (seedDoc.department_id) existing.department_id = seedDoc.department_id;
+      if (seedDoc.specialty_group && !existing.specialty_group) existing.specialty_group = seedDoc.specialty_group;
+      if (seedDoc.department_id && !existing.department_id) existing.department_id = seedDoc.department_id;
+      if (seedDoc.employee_id === 'EMP-KOONG') {
+        existing.prefix_th = seedDoc.prefix_th;
+        existing.first_name_th = seedDoc.first_name_th;
+        existing.last_name_th = seedDoc.last_name_th;
+        existing.phone = seedDoc.phone;
+        existing.position = seedDoc.position;
+        existing.license_no = null;
+      }
     } else {
       db.doctors.push(seedDoc);
     }
   });
+
+  // Ensure EMP-KOONG does not have DOCTOR role or approval_routes as applicant
+  if (db.doctor_roles) {
+    db.doctor_roles = db.doctor_roles.filter(r => !(r.doctor_id === 'c0000000-0000-0000-0000-000000000001' && r.role === 'DOCTOR'));
+  }
+  if (db.approval_routes) {
+    db.approval_routes = db.approval_routes.filter(r => r.doctor_id !== 'c0000000-0000-0000-0000-000000000001');
+  }
 
   // Sync doctor roles
   seed.doctor_roles.forEach(seedRole => {

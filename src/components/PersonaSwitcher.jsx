@@ -26,7 +26,7 @@ export default function PersonaSwitcher() {
       return { badge: 'ผช.ผอ. (Step 2)', color: 'bg-purple-600 text-white font-bold' };
     }
     if (doc.roles?.includes('MEDICAL_ADMIN') || doc.employee_id === 'EMP-KOONG') {
-      return { badge: 'ฝ่ายการแพทย์ (Admin)', color: 'bg-amber-500 text-slate-950 font-bold' };
+      return { badge: 'HR / Admin (พี่กุ้ง)', color: 'bg-amber-500 text-slate-950 font-bold' };
     }
     if (doc.roles?.includes('DEPT_HEAD')) {
       return { badge: 'หัวหน้าแผนก (Step 1)', color: 'bg-emerald-600 text-white font-bold' };
@@ -46,7 +46,14 @@ export default function PersonaSwitcher() {
     const roles = targetDoc.roles || [];
     const isAdmin = roles.includes('ADMIN') || roles.includes('MEDICAL_ADMIN');
     const isDeptHead = roles.includes('DEPT_HEAD') || roles.includes('APPROVER');
+    const isHrOnly = targetDoc.employee_id === 'EMP-KOONG' || (!roles.includes('DOCTOR') && !roles.includes('DEPT_HEAD'));
     const path = location.pathname;
+
+    // If switching to HR/Admin-only account (พี่กุ้ง) while on self-leave pages, redirect to /admin
+    if (isHrOnly && (path === '/' || path.startsWith('/my-history'))) {
+      navigate('/admin');
+      return;
+    }
 
     // If user is on an Admin-only page (/admin, /admin/criteria, /admin/tenure, /admin/master-data, /admin/audit)
     // and switches to a non-admin persona, navigate to that persona's appropriate page so it never gets stuck!
@@ -95,7 +102,7 @@ export default function PersonaSwitcher() {
           </select>
         </div>
 
-        {/* Desktop View (>= md): Single Unified List (No Duplicate Rows!) */}
+        {/* Desktop View (>= md): Single Unified List with Key Approvers + Staff Dropdown */}
         <div className="hidden md:flex flex-col gap-1.5">
           <div className="flex items-center justify-between text-[11px] text-slate-400">
             <div className="flex items-center gap-1.5">
@@ -104,32 +111,83 @@ export default function PersonaSwitcher() {
               <span>คลิกเลือกผู้ใช้งานเพื่อทดสอบสิทธิ์และสายอนุมัติ 2 ขั้นตอน (หัวหน้าแผนก &gt;&gt; นพ.ปริวรรธน์)</span>
             </div>
             <span className="text-[10px] text-slate-400 font-mono">
-              กำลังใช้งาน: <strong className="text-white">{currentDoctor?.prefix_th}{currentDoctor?.first_name_th}</strong>
+              กำลังใช้งาน: <strong className="text-white">{currentDoctor?.prefix_th}{currentDoctor?.first_name_th} {currentDoctor?.last_name_th}</strong> ({currentDoctor?.doctor_type === 'PART_TIME' ? 'PT' : 'FT'})
             </span>
           </div>
 
           <div className="flex flex-wrap items-center gap-1.5">
-            {uniqueDoctors.map(doc => {
-              const isActive = currentDoctor?.id === doc.id;
-              const meta = getRoleMeta(doc);
-              return (
-                <button
-                  type="button"
-                  key={doc.id}
-                  onClick={() => handleSelectPersona(doc.id)}
-                  className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-all flex items-center gap-1.5 cursor-pointer ${
-                    isActive
-                      ? 'bg-white text-slate-900 shadow-xs ring-2 ring-sky-400 font-bold'
-                      : 'bg-slate-800/90 text-slate-300 hover:bg-slate-700 hover:text-white'
-                  }`}
-                >
-                  <span>{doc.prefix_th}{doc.first_name_th}</span>
-                  <span className={`text-[9px] px-1.5 py-0.2 rounded ${meta.color}`}>
-                    {meta.badge}
-                  </span>
-                </button>
-              );
-            })}
+            {/* 1. Key Approver Personas (Admin + Exec + 11 Dept Heads) */}
+            {uniqueDoctors
+              .filter(doc =>
+                doc.employee_id === 'EMP-KOONG' ||
+                doc.employee_id === 'EXEC-PARIWAT' ||
+                doc.roles?.includes('DEPT_HEAD') ||
+                doc.roles?.includes('EXECUTIVE_APPROVER')
+              )
+              .map(doc => {
+                const isActive = currentDoctor?.id === doc.id;
+                const meta = getRoleMeta(doc);
+                return (
+                  <button
+                    type="button"
+                    key={doc.id}
+                    onClick={() => handleSelectPersona(doc.id)}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-all flex items-center gap-1.5 cursor-pointer ${
+                      isActive
+                        ? 'bg-white text-slate-900 shadow-xs ring-2 ring-sky-400 font-bold'
+                        : 'bg-slate-800/90 text-slate-300 hover:bg-slate-700 hover:text-white'
+                    }`}
+                  >
+                    <span>{doc.prefix_th}{doc.first_name_th}</span>
+                    <span className={`text-[9px] px-1.5 py-0.2 rounded ${meta.color}`}>
+                      {meta.badge}
+                    </span>
+                  </button>
+                );
+              })}
+
+            {/* 2. Quick Selector for Other Staff Doctors (274 doctors) */}
+            {uniqueDoctors.filter(doc =>
+              doc.employee_id !== 'EMP-KOONG' &&
+              doc.employee_id !== 'EXEC-PARIWAT' &&
+              !doc.roles?.includes('DEPT_HEAD')
+            ).length > 0 && (
+              <select
+                value={
+                  uniqueDoctors.some(d =>
+                    d.id === currentDoctor?.id &&
+                    d.employee_id !== 'EMP-KOONG' &&
+                    d.employee_id !== 'EXEC-PARIWAT' &&
+                    !d.roles?.includes('DEPT_HEAD')
+                  )
+                    ? currentDoctor?.id
+                    : ''
+                }
+                onChange={(e) => handleSelectPersona(e.target.value)}
+                aria-label="เลือกแพทย์ประจำแผนกท่านอื่น"
+                className="bg-slate-800 text-white border border-slate-700 rounded-lg px-2.5 py-1 text-[11px] font-medium focus:outline-hidden focus:ring-1 focus:ring-sky-400 cursor-pointer max-w-[280px]"
+              >
+                <option value="" disabled>
+                  -- เลือกแพทย์ท่านอื่น (
+                  {uniqueDoctors.filter(doc =>
+                    doc.employee_id !== 'EMP-KOONG' &&
+                    doc.employee_id !== 'EXEC-PARIWAT' &&
+                    !doc.roles?.includes('DEPT_HEAD')
+                  ).length} ท่าน) --
+                </option>
+                {uniqueDoctors
+                  .filter(doc =>
+                    doc.employee_id !== 'EMP-KOONG' &&
+                    doc.employee_id !== 'EXEC-PARIWAT' &&
+                    !doc.roles?.includes('DEPT_HEAD')
+                  )
+                  .map(doc => (
+                    <option key={doc.id} value={doc.id}>
+                      {doc.prefix_th}{doc.first_name_th} {doc.last_name_th} [{doc.doctor_type === 'FULL_TIME' ? 'FT' : 'PT'}] — {doc.position}
+                    </option>
+                  ))}
+              </select>
+            )}
           </div>
         </div>
       </div>

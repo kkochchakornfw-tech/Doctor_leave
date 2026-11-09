@@ -20,13 +20,29 @@ export function AuthProvider({ children }) {
         const data = await res.json();
         setDoctors(data);
 
+        const testDoc = data.find(d => d.employee_id === 'DOC-TEST');
+        const v5Key = localStorage.getItem('bsi_test_doctor_v5');
         const savedId = localStorage.getItem('bsi_active_doctor_id');
+
         let selected = null;
-        if (savedId) {
+
+        // Auto-select DOC-TEST if first time on v5 or previously defaulted to EXEC-PARIWAT
+        if (testDoc && (v5Key !== 'ready' || savedId === 'c0000000-0000-0000-0000-000000000099')) {
+          selected = testDoc;
+          localStorage.setItem('bsi_active_doctor_id', testDoc.id);
+          localStorage.setItem('bsi_test_doctor_v5', 'ready');
+        } else if (savedId) {
           selected = data.find(d => d.id === savedId);
+          if (!selected) {
+            localStorage.removeItem('bsi_active_doctor_id');
+          }
         }
+
         if (!selected) {
-          selected = data.find(d => d.employee_id === 'DOC-002') || data[0];
+          selected = testDoc || data.find(d => d.employee_id === 'EMP-KOONG') || data[0] || null;
+          if (selected) {
+            localStorage.setItem('bsi_active_doctor_id', selected.id);
+          }
         }
         setCurrentDoctor(selected);
       }
@@ -92,6 +108,14 @@ export function AuthProvider({ children }) {
     }
   };
 
+  const switchDoctorByEmpId = (empId) => {
+    const found = doctors.find(d => d.employee_id === empId);
+    if (found) {
+      setCurrentDoctor(found);
+      localStorage.setItem('bsi_active_doctor_id', found.id);
+    }
+  };
+
   const isMedicalAdmin = currentDoctor?.roles?.includes('ADMIN') || currentDoctor?.roles?.includes('MEDICAL_ADMIN');
   const isApprover = currentDoctor?.roles?.includes('APPROVER') || currentDoctor?.roles?.includes('DEPT_HEAD');
   const isDoctor = currentDoctor?.roles?.includes('DOCTOR');
@@ -103,6 +127,7 @@ export function AuthProvider({ children }) {
         currentDoctor,
         setCurrentDoctor,
         switchDoctor,
+        switchDoctorByEmpId,
         refreshDoctors: fetchDoctors,
         isMedicalAdmin,
         isApprover,

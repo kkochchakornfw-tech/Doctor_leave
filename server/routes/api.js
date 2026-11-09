@@ -77,13 +77,9 @@ const upload = multer({
 });
 
 export const defaultContactSettings = {
-  department_name: 'ฝ่ายการแพทย์ (Medical Affairs)',
-  coordinator_name: 'คุณสิริมาศ',
-  phone_emergency: '076-361-888',
-  phone_ext: '1234',
-  phone_hotline: '081-999-8888',
-  email: 'medical_affairs@bsi.hospital',
-  location: 'อาคาร A ชั้น 3 ฝ่ายการแพทย์ โรงพยาบาลกรุงเทพศิริโรจน์',
+  coordinator_name: 'คุณธัญญธร ตันติกุล (พี่กุ้ง)',
+  phone_hotline: '089-470-9256',
+  phone_emergency: '089-470-9256',
   notify_line: true
 };
 
@@ -124,53 +120,15 @@ function sanitizeInput(str) {
     .trim();
 }
 
-// Helper: Calculate duration between two dates with Doctor Shift & Working Pattern intelligence
-function calculateDays(startDate, endDate, countMode = 'CALENDAR_DAYS', holidays = [], doctor = null, shifts = []) {
+// Helper: Calculate duration between two dates (สำหรับแพทย์ นับตามปฏิทินจริงทุกวัน แพทย์ไม่มีวันหยุดเสาร์-อาทิตย์)
+function calculateDays(startDate, endDate) {
   const start = new Date(startDate);
   start.setHours(0, 0, 0, 0);
   const end = new Date(endDate);
   end.setHours(0, 0, 0, 0);
   
-  if (countMode === 'CALENDAR_DAYS') {
-    const diffTime = Math.abs(end - start);
-    return Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
-  }
-
-  // countMode === 'WORKING_DAYS'
-  let days = 0;
-  const current = new Date(start);
-  
-  // Create a Set of holiday dates (YYYY-MM-DD)
-  const holidaySet = new Set(holidays.map(h => typeof h === 'string' ? h : h.holiday_date));
-  const shiftDateSet = new Set((shifts || []).filter(s => s.status === 'SCHEDULED').map(s => s.shift_date));
-
-  while (current <= end) {
-    const dayOfWeek = current.getDay();
-    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6; // Sunday = 0, Saturday = 6
-    
-    const year = current.getFullYear();
-    const month = String(current.getMonth() + 1).padStart(2, '0');
-    const date = String(current.getDate()).padStart(2, '0');
-    const dateStr = `${year}-${month}-${date}`;
-    
-    const isHoliday = holidaySet.has(dateStr);
-    const hasScheduledShift = shiftDateSet.has(dateStr);
-
-    // Hybrid Rule (ตรวจตารางเวรจริงก่อน + มีค่าตั้งต้นโปรไฟล์แพทย์):
-    // 1. ถ้ามีตารางเวรในวันดังกล่าว (แม้เป็นเสาร์-อาทิตย์ หรือวันหยุดนักขัตฤกษ์) -> นับเป็นวันลา/วันปฏิบัติงาน!
-    if (hasScheduledShift) {
-      days++;
-    } else if (isWeekend || isHoliday) {
-      // 2. ถ้าเป็นเสาร์-อาทิตย์ หรือวันหยุด รพ. และหมอไม่มีเวร -> เว้น (ไม่หักวันลา)
-    } else {
-      // 3. วันทำการปกติ (จันทร์ - ศุกร์ ที่ไม่ใช่วันหยุด รพ.) -> นับเป็นวันปฏิบัติงานปกติ
-      days++;
-    }
-    
-    current.setDate(current.getDate() + 1);
-  }
-  
-  return days;
+  const diffTime = Math.abs(end - start);
+  return Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
 }
 
 // -------------------------------------------------------------
@@ -413,6 +371,381 @@ router.get('/doctors/:id', (req, res) => {
   });
 });
 
+// Helper to sync approval routes for a single doctor or entire department
+function syncDoctorApprovalRoute(db, doc, dept) {
+  if (!doc || !dept || doc.employee_id === 'EMP-KOONG') return;
+  const roles = (db.doctor_roles || []).filter(r => r.doctor_id === doc.id).map(r => r.role);
+  if (!roles.includes('DOCTOR') && !roles.includes('DEPT_HEAD')) return;
+
+  const finalApproverId = dept.final_approver_id || 'c0000000-0000-0000-0000-000000000099';
+  const headDoctorId = dept.head_doctor_id || null;
+  const isHead = roles.includes('DEPT_HEAD') || doc.id === headDoctorId;
+
+  // Remove old routes for this doctor
+  db.approval_routes = (db.approval_routes || []).filter(r => r.doctor_id !== doc.id);
+
+  if (doc.id === finalApproverId) return;
+
+  if (isHead || !headDoctorId) {
+    db.approval_routes.push({
+      id: uuidv4(),
+      doctor_id: doc.id,
+      step_order: 1,
+      approver_id: finalApproverId,
+      is_active: true,
+      created_at: new Date().toISOString()
+    });
+  } else {
+    db.approval_routes.push({
+      id: uuidv4(),
+      doctor_id: doc.id,
+      step_order: 1,
+      approver_id: headDoctorId,
+      is_active: true,
+      created_at: new Date().toISOString()
+    });
+    if (finalApproverId && finalApproverId !== headDoctorId) {
+      db.approval_routes.push({
+        id: uuidv4(),
+        doctor_id: doc.id,
+        step_order: 2,
+        approver_id: finalApproverId,
+        is_active: true,
+        created_at: new Date().toISOString()
+      });
+    }
+  }
+}
+
+// POST /api/doctors - Add single doctor
+router.post('/doctors', (req, res) => {
+  const db = getDb();
+  const {
+    prefix_th = 'นพ.',
+    first_name_th,
+    last_name_th,
+    employee_id,
+    license_no,
+    department_id,
+    specialty_group = null,
+    doctor_type = 'FULL_TIME',
+    hire_date,
+    phone = '',
+    email = '',
+    position = '',
+    role = 'DOCTOR',
+    actor_id
+  } = req.body;
+
+  if (!first_name_th || !last_name_th || !department_id) {
+    return res.status(400).json({ error: 'กรุณาระบุชื่อ-นามสกุล และแผนกของแพทย์' });
+  }
+
+  const cleanEmpId = (employee_id || `DOC-${Date.now().toString().slice(-4)}`).trim();
+  if (db.doctors.some(d => d.employee_id === cleanEmpId)) {
+    return res.status(400).json({ error: `รหัสพนักงาน '${cleanEmpId}' มีอยู่ในระบบแล้ว` });
+  }
+
+  const dept = db.departments.find(d => d.id === department_id);
+  const newDoc = {
+    id: uuidv4(),
+    employee_id: cleanEmpId,
+    license_no: license_no ? license_no.trim() : null,
+    line_user_id: null,
+    prefix_th: prefix_th.trim(),
+    first_name_th: first_name_th.trim(),
+    last_name_th: last_name_th.trim(),
+    position: position ? position.trim() : (role === 'DEPT_HEAD' ? `หัวหน้าแผนก${dept?.name_th || ''}` : `แพทย์ประจำแผนก${dept?.name_th || ''}`),
+    doctor_type: doctor_type === 'PART_TIME' ? 'PART_TIME' : 'FULL_TIME',
+    department_id,
+    specialty_group: specialty_group || null,
+    phone: phone ? phone.trim() : '',
+    email: email ? email.trim() : '',
+    hire_date: hire_date || getTodayString(),
+    is_active: true,
+    avatar: 'https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?w=150&auto=format&fit=crop&q=80',
+    created_at: new Date().toISOString()
+  };
+
+  db.doctors.push(newDoc);
+
+  // Roles
+  db.doctor_roles.push({ id: uuidv4(), doctor_id: newDoc.id, role: 'DOCTOR' });
+  if (role === 'DEPT_HEAD') {
+    db.doctor_roles.push({ id: uuidv4(), doctor_id: newDoc.id, role: 'DEPT_HEAD' });
+    if (dept) {
+      dept.head_doctor_id = newDoc.id;
+    }
+  }
+
+  // Provision leave balances
+  const currentYear = new Date().getFullYear();
+  db.leave_types.forEach(lt => {
+    let entitlement = 0;
+    if (lt.code === 'VACATION') entitlement = newDoc.doctor_type === 'PART_TIME' ? 0 : 20;
+    else if (lt.code === 'SICK') entitlement = 30;
+    else if (lt.code === 'ORDINATION') entitlement = 120;
+    else if (lt.code === 'MATERNITY') entitlement = 90;
+    else if (lt.code === 'UNPAID') entitlement = 30;
+
+    db.leave_balances.push({
+      id: uuidv4(),
+      doctor_id: newDoc.id,
+      leave_type_id: lt.id,
+      fiscal_year: currentYear,
+      entitlement_days: entitlement,
+      carried_over_days: 0,
+      used_days: 0,
+      pending_days: 0,
+      updated_at: new Date().toISOString()
+    });
+  });
+
+  // Sync approval routes
+  if (dept) {
+    if (role === 'DEPT_HEAD') {
+      db.doctors.filter(d => d.department_id === dept.id).forEach(d => syncDoctorApprovalRoute(db, d, dept));
+    } else {
+      syncDoctorApprovalRoute(db, newDoc, dept);
+    }
+  }
+
+  db.audit_logs.push({
+    id: uuidv4(),
+    table_name: 'doctors',
+    record_id: newDoc.id,
+    action: 'INSERT',
+    actor_id: actor_id || null,
+    new_data: { name: `${newDoc.prefix_th}${newDoc.first_name_th} ${newDoc.last_name_th}`, employee_id: newDoc.employee_id },
+    ip_address: req.ip || '127.0.0.1',
+    created_at: new Date().toISOString()
+  });
+
+  saveStore();
+  res.status(201).json({ message: 'เพิ่มรายชื่อแพทย์สำเร็จ', doctor: newDoc });
+});
+
+// PUT /api/doctors/:id - Update doctor profile
+router.put('/doctors/:id', (req, res) => {
+  const db = getDb();
+  const doc = db.doctors.find(d => d.id === req.params.id);
+  if (!doc) return res.status(404).json({ error: 'ไม่พบข้อมูลแพทย์' });
+
+  const {
+    prefix_th,
+    first_name_th,
+    last_name_th,
+    employee_id,
+    license_no,
+    department_id,
+    specialty_group,
+    doctor_type,
+    hire_date,
+    phone,
+    email,
+    position,
+    is_active,
+    role,
+    actor_id
+  } = req.body;
+
+  if (prefix_th !== undefined) doc.prefix_th = prefix_th.trim();
+  if (first_name_th !== undefined) doc.first_name_th = first_name_th.trim();
+  if (last_name_th !== undefined) doc.last_name_th = last_name_th.trim();
+  if (employee_id !== undefined) doc.employee_id = employee_id.trim();
+  if (license_no !== undefined) doc.license_no = license_no ? license_no.trim() : null;
+  if (department_id !== undefined) doc.department_id = department_id;
+  if (specialty_group !== undefined) doc.specialty_group = specialty_group || null;
+  if (doctor_type !== undefined) doc.doctor_type = doctor_type;
+  if (hire_date !== undefined) doc.hire_date = hire_date;
+  if (phone !== undefined) doc.phone = phone.trim();
+  if (email !== undefined) doc.email = email.trim();
+  if (position !== undefined) doc.position = position.trim();
+  if (is_active !== undefined) doc.is_active = Boolean(is_active);
+
+  if (role && doc.employee_id !== 'EMP-KOONG') {
+    const hasHead = db.doctor_roles.some(r => r.doctor_id === doc.id && r.role === 'DEPT_HEAD');
+    if (role === 'DEPT_HEAD' && !hasHead) {
+      db.doctor_roles.push({ id: uuidv4(), doctor_id: doc.id, role: 'DEPT_HEAD' });
+    } else if (role === 'DOCTOR' && hasHead) {
+      db.doctor_roles = db.doctor_roles.filter(r => !(r.doctor_id === doc.id && r.role === 'DEPT_HEAD'));
+    }
+  }
+
+  const dept = db.departments.find(d => d.id === doc.department_id);
+  if (dept) {
+    syncDoctorApprovalRoute(db, doc, dept);
+  }
+
+  db.audit_logs.push({
+    id: uuidv4(),
+    table_name: 'doctors',
+    record_id: doc.id,
+    action: 'UPDATE',
+    actor_id: actor_id || null,
+    new_data: { name: `${doc.prefix_th}${doc.first_name_th} ${doc.last_name_th}`, department_id: doc.department_id, specialty_group: doc.specialty_group },
+    ip_address: req.ip || '127.0.0.1',
+    created_at: new Date().toISOString()
+  });
+
+  saveStore();
+  res.json({ message: 'แก้ไขข้อมูลแพทย์สำเร็จ', doctor: doc });
+});
+
+// DELETE /api/doctors/:id - Delete doctor
+router.delete('/doctors/:id', (req, res) => {
+  const db = getDb();
+  const idx = db.doctors.findIndex(d => d.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'ไม่พบข้อมูลแพทย์' });
+
+  const deleted = db.doctors[idx];
+  if (deleted.employee_id === 'EMP-KOONG' || deleted.employee_id === 'EXEC-PARIWAT') {
+    return res.status(400).json({ error: 'ไม่สามารถลบบัญชีผู้บริหารหรือผู้ดูแลระบบหลักได้' });
+  }
+
+  db.doctors.splice(idx, 1);
+  db.doctor_roles = (db.doctor_roles || []).filter(r => r.doctor_id !== deleted.id);
+  db.approval_routes = (db.approval_routes || []).filter(r => r.doctor_id !== deleted.id && r.approver_id !== deleted.id);
+  db.leave_balances = (db.leave_balances || []).filter(b => b.doctor_id !== deleted.id);
+
+  saveStore();
+  res.json({ message: 'ลบรายชื่อแพทย์เรียบร้อยแล้ว', id: deleted.id });
+});
+
+// POST /api/doctors/bulk-import - Import multiple doctors from Excel/CSV
+router.post('/doctors/bulk-import', (req, res) => {
+  const db = getDb();
+  const { doctors: rows = [], actor_id } = req.body;
+  if (!Array.isArray(rows) || rows.length === 0) {
+    return res.status(400).json({ error: 'ไม่พบข้อมูลรายชื่อแพทย์ที่ต้องการนำเข้า' });
+  }
+
+  const currentYear = new Date().getFullYear();
+  let importedCount = 0;
+  let updatedCount = 0;
+  const errors = [];
+
+  rows.forEach((row, index) => {
+    const firstName = (row.first_name_th || '').trim();
+    const lastName = (row.last_name_th || '').trim();
+    if (!firstName) {
+      errors.push(`แถวที่ ${index + 1}: ไม่ระบุชื่อแพทย์`);
+      return;
+    }
+
+    // Match department by id, code, or Thai name
+    const deptKey = (row.department || row.department_code || row.department_id || '').trim();
+    let dept = db.departments.find(dp =>
+      dp.id === deptKey ||
+      dp.code.toLowerCase() === deptKey.toLowerCase() ||
+      dp.name_th.includes(deptKey) ||
+      deptKey.includes(dp.name_th)
+    );
+    if (!dept) {
+      dept = db.departments[0];
+    }
+
+    // Match specialty_group if provided
+    let specGroup = (row.specialty_group || '').trim() || null;
+    if (specGroup && dept?.staffing_groups?.length > 0) {
+      const matchedGrp = dept.staffing_groups.find(g => g.id.toLowerCase() === specGroup.toLowerCase() || g.name_th.includes(specGroup));
+      if (matchedGrp) specGroup = matchedGrp.id;
+    }
+
+    const empId = (row.employee_id || `DOC-${Date.now().toString().slice(-4)}-${index + 1}`).trim();
+    const existing = db.doctors.find(d =>
+      (row.employee_id && d.employee_id === empId) ||
+      (d.first_name_th === firstName && d.last_name_th === lastName)
+    );
+
+    const docType = (row.doctor_type || '').toUpperCase().includes('PART') || (row.doctor_type || '').includes('พาร์ท') ? 'PART_TIME' : 'FULL_TIME';
+    const isHeadRole = (row.role || '').toUpperCase().includes('HEAD') || (row.role || '').includes('หัวหน้า');
+
+    if (existing) {
+      existing.prefix_th = (row.prefix_th || existing.prefix_th || 'นพ.').trim();
+      existing.first_name_th = firstName;
+      existing.last_name_th = lastName;
+      if (row.license_no) existing.license_no = String(row.license_no).trim();
+      if (dept) existing.department_id = dept.id;
+      if (specGroup) existing.specialty_group = specGroup;
+      existing.doctor_type = docType;
+      if (row.hire_date) existing.hire_date = row.hire_date;
+      if (row.phone) existing.phone = String(row.phone).trim();
+      syncDoctorApprovalRoute(db, existing, dept);
+      updatedCount++;
+    } else {
+      const newDoc = {
+        id: uuidv4(),
+        employee_id: empId,
+        license_no: row.license_no ? String(row.license_no).trim() : null,
+        line_user_id: null,
+        prefix_th: (row.prefix_th || 'นพ.').trim(),
+        first_name_th: firstName,
+        last_name_th: lastName,
+        position: isHeadRole ? `หัวหน้าแผนก${dept?.name_th || ''}` : `แพทย์ประจำแผนก${dept?.name_th || ''}`,
+        doctor_type: docType,
+        department_id: dept ? dept.id : null,
+        specialty_group: specGroup,
+        phone: row.phone ? String(row.phone).trim() : '',
+        email: row.email ? String(row.email).trim() : '',
+        hire_date: row.hire_date || getTodayString(),
+        is_active: true,
+        avatar: 'https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?w=150&auto=format&fit=crop&q=80',
+        created_at: new Date().toISOString()
+      };
+      db.doctors.push(newDoc);
+      db.doctor_roles.push({ id: uuidv4(), doctor_id: newDoc.id, role: 'DOCTOR' });
+      if (isHeadRole) {
+        db.doctor_roles.push({ id: uuidv4(), doctor_id: newDoc.id, role: 'DEPT_HEAD' });
+        if (dept) dept.head_doctor_id = newDoc.id;
+      }
+
+      db.leave_types.forEach(lt => {
+        let entitlement = 0;
+        if (lt.code === 'VACATION') entitlement = newDoc.doctor_type === 'PART_TIME' ? 0 : 20;
+        else if (lt.code === 'SICK') entitlement = 30;
+        else if (lt.code === 'ORDINATION') entitlement = 120;
+        else if (lt.code === 'MATERNITY') entitlement = 90;
+        else if (lt.code === 'UNPAID') entitlement = 30;
+
+        db.leave_balances.push({
+          id: uuidv4(),
+          doctor_id: newDoc.id,
+          leave_type_id: lt.id,
+          fiscal_year: currentYear,
+          entitlement_days: entitlement,
+          carried_over_days: 0,
+          used_days: 0,
+          pending_days: 0,
+          updated_at: new Date().toISOString()
+        });
+      });
+
+      syncDoctorApprovalRoute(db, newDoc, dept);
+      importedCount++;
+    }
+  });
+
+  db.audit_logs.push({
+    id: uuidv4(),
+    table_name: 'doctors',
+    record_id: 'bulk-import',
+    action: 'INSERT',
+    actor_id: actor_id || null,
+    new_data: { importedCount, updatedCount },
+    ip_address: req.ip || '127.0.0.1',
+    created_at: new Date().toISOString()
+  });
+
+  saveStore();
+  res.json({
+    message: `นำเข้ารายชื่อแพทย์สำเร็จ (เพิ่มใหม่ ${importedCount} ท่าน, อัปเดต ${updatedCount} ท่าน)`,
+    importedCount,
+    updatedCount,
+    errors
+  });
+});
+
 // -------------------------------------------------------------
 // DEPARTMENTS & QUOTA RULES
 // -------------------------------------------------------------
@@ -421,27 +754,77 @@ router.get('/departments', (req, res) => {
   const today = getTodayString();
 
   const results = db.departments.map(dept => {
-    // Doctors in dept
-    const deptDoctors = db.doctors.filter(d => d.department_id === dept.id);
+    // Doctors in dept (excluding HR Admin)
+    const deptDoctors = db.doctors.filter(d => d.department_id === dept.id && d.employee_id !== 'EMP-KOONG' && d.is_active !== false);
     
     // On-leave today
     const onLeaveToday = db.leave_requests.filter(req => {
       if (req.status !== 'APPROVED' && req.status !== 'PENDING') return false;
-      const doc = db.doctors.find(d => d.id === req.doctor_id);
-      if (!doc || doc.department_id !== dept.id) return false;
+      const doc = deptDoctors.find(d => d.id === req.doctor_id);
+      if (!doc) return false;
       return today >= req.start_date && today <= req.end_date;
     });
 
+    const headDoc = dept.head_doctor_id ? db.doctors.find(d => d.id === dept.head_doctor_id) : null;
+    const finalDoc = dept.final_approver_id ? db.doctors.find(d => d.id === dept.final_approver_id) : db.doctors.find(d => d.employee_id === 'EXEC-PARIWAT');
+
     return {
       ...dept,
+      staffing_mode: dept.staffing_mode || 'DEPARTMENT',
+      staffing_groups: dept.staffing_groups || [],
+      head_doctor_name: headDoc ? `${headDoc.prefix_th}${headDoc.first_name_th} ${headDoc.last_name_th}` : 'ไม่ระบุ',
+      final_approver_name: finalDoc ? `${finalDoc.prefix_th}${finalDoc.first_name_th} ${finalDoc.last_name_th}` : 'นพ.ปริวรรธน์ ระเด่น',
       doctor_count: deptDoctors.length,
       on_leave_today_count: onLeaveToday.length,
       available_doctors_today: Math.max(0, deptDoctors.length - onLeaveToday.length),
-      is_quota_exceeded_today: onLeaveToday.length >= dept.max_leave_per_day
+      is_quota_exceeded_today: dept.max_leave_per_day ? onLeaveToday.length >= dept.max_leave_per_day : false
     };
   });
 
   res.json(results);
+});
+
+router.post('/departments', (req, res) => {
+  const db = getDb();
+  const {
+    code,
+    name_th,
+    name_en = '',
+    min_staff_required = 1,
+    max_leave_per_day = 2,
+    staffing_mode = 'DEPARTMENT',
+    staffing_groups = [],
+    head_doctor_id = null,
+    final_approver_id = 'c0000000-0000-0000-0000-000000000099'
+  } = req.body;
+
+  if (!name_th) {
+    return res.status(400).json({ error: 'กรุณาระบุชื่อแผนก' });
+  }
+
+  const cleanCode = (code || `DEPT_${Date.now().toString().slice(-4)}`).trim().toUpperCase().replace(/\s+/g, '_');
+  if (db.departments.some(d => d.code === cleanCode)) {
+    return res.status(400).json({ error: `รหัสแผนก '${cleanCode}' มีอยู่ในระบบแล้ว` });
+  }
+
+  const newDept = {
+    id: uuidv4(),
+    code: cleanCode,
+    name_th: name_th.trim(),
+    name_en: name_en.trim(),
+    min_staff_required: Number(min_staff_required) || 0,
+    max_leave_per_day: Number(max_leave_per_day) || 2,
+    staffing_mode,
+    staffing_groups: Array.isArray(staffing_groups) ? staffing_groups : [],
+    head_doctor_id: head_doctor_id || null,
+    final_approver_id: final_approver_id || 'c0000000-0000-0000-0000-000000000099',
+    is_active: true,
+    created_at: new Date().toISOString()
+  };
+
+  db.departments.push(newDept);
+  saveStore();
+  res.status(201).json({ message: 'สร้างแผนกใหม่สำเร็จ', department: newDept });
 });
 
 router.put('/departments/:id', (req, res) => {
@@ -449,18 +832,74 @@ router.put('/departments/:id', (req, res) => {
   const dept = db.departments.find(d => d.id === req.params.id);
   if (!dept) return res.status(404).json({ error: 'Department not found' });
 
-  const { min_staff_required, max_leave_per_day, name_th, staffing_groups } = req.body;
+  const {
+    code,
+    name_th,
+    name_en,
+    min_staff_required,
+    max_leave_per_day,
+    staffing_mode,
+    staffing_groups,
+    head_doctor_id,
+    final_approver_id
+  } = req.body;
+
+  if (code !== undefined && code.trim()) dept.code = code.trim().toUpperCase();
+  if (name_th !== undefined) dept.name_th = name_th.trim();
+  if (name_en !== undefined) dept.name_en = name_en.trim();
   if (min_staff_required !== undefined) {
-    dept.min_staff_required = min_staff_required === '' || min_staff_required === null ? null : parseInt(min_staff_required, 10);
+    dept.min_staff_required = min_staff_required === '' || min_staff_required === null ? 0 : parseInt(min_staff_required, 10);
   }
   if (max_leave_per_day !== undefined) {
     dept.max_leave_per_day = max_leave_per_day === '' || max_leave_per_day === null ? null : parseInt(max_leave_per_day, 10);
   }
-  if (name_th !== undefined) dept.name_th = name_th;
+  if (staffing_mode !== undefined) dept.staffing_mode = staffing_mode;
   if (staffing_groups !== undefined) dept.staffing_groups = staffing_groups;
 
+  // If head_doctor_id or final_approver_id updated, sync roles & approval routes for this department
+  let shouldSyncRoutes = false;
+  if (head_doctor_id !== undefined) {
+    const prevHeadId = dept.head_doctor_id;
+    dept.head_doctor_id = head_doctor_id || null;
+    if (prevHeadId && prevHeadId !== dept.head_doctor_id && prevHeadId !== 'c0000000-0000-0000-0000-000000000099') {
+      db.doctor_roles = (db.doctor_roles || []).filter(r => !(r.doctor_id === prevHeadId && r.role === 'DEPT_HEAD'));
+    }
+    if (dept.head_doctor_id) {
+      const hasHeadRole = (db.doctor_roles || []).some(r => r.doctor_id === dept.head_doctor_id && r.role === 'DEPT_HEAD');
+      if (!hasHeadRole) {
+        db.doctor_roles.push({ id: uuidv4(), doctor_id: dept.head_doctor_id, role: 'DEPT_HEAD' });
+      }
+    }
+    shouldSyncRoutes = true;
+  }
+  if (final_approver_id !== undefined) {
+    dept.final_approver_id = final_approver_id || 'c0000000-0000-0000-0000-000000000099';
+    shouldSyncRoutes = true;
+  }
+
+  if (shouldSyncRoutes) {
+    const deptDoctors = db.doctors.filter(d => d.department_id === dept.id);
+    deptDoctors.forEach(doc => syncDoctorApprovalRoute(db, doc, dept));
+  }
+
   saveStore();
-  res.json({ message: 'Department quota updated successfully', department: dept });
+  res.json({ message: 'บันทึกการตั้งค่าแผนกเรียบร้อยแล้ว', department: dept });
+});
+
+router.delete('/departments/:id', (req, res) => {
+  const db = getDb();
+  const idx = db.departments.findIndex(d => d.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'ไม่พบแผนกที่ระบุ' });
+
+  const dept = db.departments[idx];
+  const assignedDocs = db.doctors.filter(d => d.department_id === dept.id && d.employee_id !== 'EMP-KOONG');
+  if (assignedDocs.length > 0) {
+    return res.status(400).json({ error: `ไม่สามารถลบแผนกได้ เนื่องจากยังมีแพทย์สังกัดอยู่ในแผนกนี้ (${assignedDocs.length} ท่าน) กรุณาย้ายแผนกของแพทย์ก่อน` });
+  }
+
+  db.departments.splice(idx, 1);
+  saveStore();
+  res.json({ message: 'ลบแผนกเรียบร้อยแล้ว', id: dept.id });
 });
 
 // -------------------------------------------------------------
@@ -770,7 +1209,7 @@ router.get('/quota-check', (req, res) => {
   // Look up doctor if provided (to see if they belong to a specific specialty group)
   const requestingDoctor = doctorId ? db.doctors.find(d => d.id === doctorId) : null;
   let targetGroup = null;
-  if (dept.staffing_groups && requestingDoctor?.specialty_group) {
+  if (dept.staffing_mode === 'GROUP' && dept.staffing_groups?.length > 0 && requestingDoctor?.specialty_group) {
     targetGroup = dept.staffing_groups.find(g => g.id === requestingDoctor.specialty_group);
   }
 
@@ -852,18 +1291,19 @@ router.get('/quota-check', (req, res) => {
 
   const selectedDayInfo = computeDayAvailability(date);
 
-  // Build 14-day availability forecast starting from today to help doctors pick a shift-swap date
-  const todayStr = getTodayString();
-  const baseDate = new Date(todayStr + 'T00:00:00');
+  // Build full 2-month calendar forecast (1st of current month through last day of next month)
+  const nowObj = new Date();
+  const firstDayCurMonth = new Date(nowObj.getFullYear(), nowObj.getMonth(), 1);
+  const lastDayNextMonth = new Date(nowObj.getFullYear(), nowObj.getMonth() + 2, 0);
   const upcomingDays = [];
-  for (let i = 0; i < 14; i++) {
-    const d = new Date(baseDate);
-    d.setDate(baseDate.getDate() + i);
-    const yyyy = d.getFullYear();
-    const mm = String(d.getMonth() + 1).padStart(2, '0');
-    const dd = String(d.getDate()).padStart(2, '0');
+  const cursorD = new Date(firstDayCurMonth);
+  while (cursorD <= lastDayNextMonth) {
+    const yyyy = cursorD.getFullYear();
+    const mm = String(cursorD.getMonth() + 1).padStart(2, '0');
+    const dd = String(cursorD.getDate()).padStart(2, '0');
     const dStr = `${yyyy}-${mm}-${dd}`;
     upcomingDays.push(computeDayAvailability(dStr));
+    cursorD.setDate(cursorD.getDate() + 1);
   }
 
   res.json({
@@ -1085,6 +1525,18 @@ router.post('/leave-requests', handleUpload, async (req, res) => {
     const today = getTodayString();
     const isEmergency = start_date === today;
 
+    // Shift Swap Rule: ลาสลับวันออกตรวจ ลาล่วงหน้าได้แค่เดือนนี้กับเดือนหน้าพอ
+    if (leaveType.code === 'SHIFT_SWAP' && submitted_by_admin !== 'true') {
+      const nowD = new Date();
+      const maxSwapObj = new Date(nowD.getFullYear(), nowD.getMonth() + 2, 0);
+      const maxSwapStr = `${maxSwapObj.getFullYear()}-${String(maxSwapObj.getMonth() + 1).padStart(2, '0')}-${String(maxSwapObj.getDate()).padStart(2, '0')}`;
+      if (start_date > maxSwapStr || (swap_date && swap_date > maxSwapStr)) {
+        return res.status(400).json({
+          error: `การลาสลับวันออกตรวจ สามารถเลือกวันหยุดและวันสลับตรวจได้เฉพาะภายในเดือนนี้และเดือนหน้าเท่านั้น (ไม่เกินวันที่ ${maxSwapStr})`
+        });
+      }
+    }
+
     // 1. Backdate Check (บันทึกก่อนลาเท่านั้น สำหรับประเภทที่ไม่อนุญาตให้บันทึกลาย้อนหลัง)
     if (!leaveType.allows_backdate && start_date < today && submitted_by_admin !== 'true') {
       return res.status(400).json({
@@ -1256,8 +1708,8 @@ router.post('/leave-requests', handleUpload, async (req, res) => {
 
     if (dept) {
       let targetGroup = null;
-      if (dept.staffing_groups && doctor.specialty_group) {
-        targetGroup = dept.staffing_groups.find(g => g.id === doctor.specialty_group);
+      if (dept.staffing_mode === 'GROUP' && dept.staffing_groups?.length > 0 && doc.specialty_group) {
+        targetGroup = dept.staffing_groups.find(g => g.id === doc.specialty_group);
       }
       const minRequired = targetGroup ? targetGroup.min_staff_required : dept.min_staff_required;
       const scopeName = targetGroup ? targetGroup.name_th : dept.name_th;
@@ -1319,7 +1771,7 @@ router.post('/leave-requests', handleUpload, async (req, res) => {
       if (isException && submitted_by_admin !== 'true') {
         if (isBelowMinStaff) {
           return res.status(400).json({
-            error: `ไม่สามารถยื่นลาได้ เนื่องจากแพทย์${scopeName}จะเหลือเพียง ${violatedRemaining} ท่าน ซึ่งต่ำกว่าเกณฑ์ขั้นต่ำ (${minRequired} ท่าน ในวันที่ ${violatedDate}) กรุณาติดต่อฝ่ายการแพทย์ (พี่กุ้ง) เพื่อพิจารณาบันทึกเป็นกรณีพิเศษ`
+            error: `ไม่สามารถยื่นลาได้ เนื่องจากแพทย์${scopeName}จะเหลือเพียง ${violatedRemaining} ท่าน ซึ่งต่ำกว่าเกณฑ์ขั้นต่ำ (${minRequired} ท่าน ในวันที่ ${violatedDate}) กรุณาติดต่อฝ่ายการแพทย์ คุณธัญญธร / พี่กุ้ง (โทร. 089-470-9256) เพื่อพิจารณาบันทึกเป็นกรณีพิเศษ`
           });
         }
         if (dept.max_leave_per_day && maxOnLeaveCount >= dept.max_leave_per_day && !isEmergency) {
@@ -2547,13 +2999,12 @@ router.post('/calculate-duration', (req, res) => {
     });
   }
 
-  const duration_days = calculateDays(start_date, end_date, countMode, holidays, doctor, shifts);
+  const duration_days = calculateDays(start_date, end_date);
 
   // Find holidays and shifts that fall within this range
   const holidaySet = new Set(holidays.map(h => h.holiday_date));
   const holidaysInRange = [];
   const shiftsInRange = [];
-  let weekendShiftsCount = 0;
 
   const start = new Date(start_date);
   const end = new Date(end_date);
@@ -2564,8 +3015,6 @@ router.post('/calculate-duration', (req, res) => {
     const month = String(current.getMonth() + 1).padStart(2, '0');
     const date = String(current.getDate()).padStart(2, '0');
     const dateStr = `${year}-${month}-${date}`;
-    const dow = current.getDay();
-    const isWeekend = dow === 0 || dow === 6;
 
     if (holidaySet.has(dateStr)) {
       const hObj = holidays.find(h => h.holiday_date === dateStr);
@@ -2575,9 +3024,6 @@ router.post('/calculate-duration', (req, res) => {
     const sObj = shifts.find(s => s.shift_date === dateStr);
     if (sObj) {
       shiftsInRange.push(sObj);
-      if (isWeekend || holidaySet.has(dateStr)) {
-        weekendShiftsCount++;
-      }
     }
 
     current.setDate(current.getDate() + 1);
@@ -2585,11 +3031,10 @@ router.post('/calculate-duration', (req, res) => {
 
   res.json({
     duration_days,
-    count_mode: countMode,
+    count_mode: 'CALENDAR_DAYS',
     holidays_in_range: holidaysInRange,
     shifts_in_range: shiftsInRange,
-    weekend_shifts_count: weekendShiftsCount,
-    working_pattern: doctor?.working_pattern || (doctor?.doctor_type === 'PART_TIME' ? 'SHIFT_BASED' : 'OFFICE_HOURS')
+    weekend_shifts_count: 0
   });
 });
 
@@ -2698,11 +3143,11 @@ router.put('/tenure/rules', (req, res) => {
 router.get('/settings/contact', (req, res) => {
   const db = getDb();
   const defaultContact = {
-    department_name: 'ฝ่ายการแพทย์ (Medical Affairs)',
-    coordinator_name: 'คุณสิริมาศ',
+    department_name: 'ฝ่ายการแพทย์ / HR (Medical Affairs)',
+    coordinator_name: 'คุณธัญญธร ตันติกุล (พี่กุ้ง)',
     phone_emergency: '076-361-888',
     phone_ext: '1234',
-    phone_hotline: '081-999-8888',
+    phone_hotline: '089-470-9256',
     email: 'medical_affairs@bsi.hospital',
     location: 'อาคาร A ชั้น 3 ฝ่ายการแพทย์ โรงพยาบาลกรุงเทพศิริโรจน์',
     notify_line: true

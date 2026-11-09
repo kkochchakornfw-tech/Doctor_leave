@@ -31,7 +31,12 @@ import {
   MessageSquare,
   Copy,
   Building,
-  Activity
+  Building2,
+  FileSpreadsheet,
+  Activity,
+  Upload,
+  Download,
+  Save
 } from 'lucide-react';
 
 export default function AdminMasterDataPage() {
@@ -60,7 +65,7 @@ export default function AdminMasterDataPage() {
     code: '',
     name_th: '',
     name_en: '',
-    count_mode: 'WORKING_DAYS',
+    count_mode: 'CALENDAR_DAYS',
     allows_half_day: true,
     requires_attachment: false,
     attachment_threshold_days: 2.0,
@@ -71,18 +76,51 @@ export default function AdminMasterDataPage() {
     color: '#006699'
   });
 
-  // Doctor LINE Accounts State
+  // Doctor LINE Accounts & Doctor CRUD State
   const [doctorSearch, setDoctorSearch] = useState('');
+  const [showIndividualRoutes, setShowIndividualRoutes] = useState(false);
+
+  // Department CRUD & Dept Route State
+  const [deptModalOpen, setDeptModalOpen] = useState(false);
+  const [editingDept, setEditingDept] = useState(null);
+  const [savingDeptId, setSavingDeptId] = useState(null);
+  const [deptForm, setDeptForm] = useState({
+    code: '',
+    name_th: '',
+    name_en: '',
+    min_staff_required: 2,
+    max_leave_per_day: 2,
+    head_doctor_id: '',
+    final_approver_id: 'c0000000-0000-0000-0000-000000000099'
+  });
+
+  // Single Doctor Add/Edit Modal State
+  const [doctorModalOpen, setDoctorModalOpen] = useState(false);
+  const [editingDoctor, setEditingDoctor] = useState(null);
+  const [doctorForm, setDoctorForm] = useState({
+    prefix_th: 'นพ.',
+    first_name_th: '',
+    last_name_th: '',
+    employee_id: '',
+    license_no: '',
+    department_id: '',
+    specialty_group: '',
+    doctor_type: 'FULL_TIME',
+    hire_date: new Date().toISOString().split('T')[0],
+    phone: '',
+    role: 'DOCTOR'
+  });
+
+  // Bulk Import Excel/CSV Modal State
+  const [bulkModalOpen, setBulkModalOpen] = useState(false);
+  const [bulkRawText, setBulkRawText] = useState('');
+  const [bulkPreviewRows, setBulkPreviewRows] = useState([]);
+  const [importingBulk, setImportingBulk] = useState(false);
 
   // Medical Affairs Contact Settings State
   const [contactSettings, setContactSettings] = useState({
-    department_name: 'ฝ่ายการแพทย์ (Medical Affairs)',
-    coordinator_name: 'คุณสิริมาศ',
-    phone_emergency: '076-361-888',
-    phone_ext: '1234',
-    phone_hotline: '081-999-8888',
-    email: 'medical_affairs@bsi.hospital',
-    location: 'อาคาร A ชั้น 3 ฝ่ายการแพทย์ โรงพยาบาลกรุงเทพศิริโรจน์',
+    coordinator_name: 'คุณธัญญธร ตันติกุล (พี่กุ้ง)',
+    phone_hotline: '089-470-9256',
     notify_line: true
   });
   const [contactLoading, setContactLoading] = useState(false);
@@ -273,6 +311,266 @@ export default function AdminMasterDataPage() {
     }
   };
 
+  // --- Handlers: Department Approval Routes & Department CRUD ---
+  const handleDeptRouteChange = (deptId, field, value) => {
+    setDepartments(prev =>
+      prev.map(d => (d.id === deptId ? { ...d, [field]: value } : d))
+    );
+  };
+
+  const handleSaveDeptApprovalRoute = async (dept) => {
+    setSavingDeptId(dept.id);
+    try {
+      const res = await fetch(`/api/departments/${dept.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          head_doctor_id: dept.head_doctor_id || null,
+          final_approver_id: dept.final_approver_id || 'c0000000-0000-0000-0000-000000000099'
+        })
+      });
+      if (!res.ok) throw new Error((await res.json()).error || 'บันทึกไม่สำเร็จ');
+      showToast(`บันทึกสายอนุมัติแผนก${dept.name_th} และอัปเดตให้แพทย์ในแผนกเรียบร้อย`);
+      fetchInitialData();
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      setSavingDeptId(null);
+    }
+  };
+
+  const handleOpenAddDept = () => {
+    setEditingDept(null);
+    setDeptForm({
+      code: '',
+      name_th: '',
+      name_en: '',
+      min_staff_required: 2,
+      max_leave_per_day: 2,
+      head_doctor_id: '',
+      final_approver_id: 'c0000000-0000-0000-0000-000000000099'
+    });
+    setDeptModalOpen(true);
+  };
+
+  const handleOpenEditDept = (dept) => {
+    setEditingDept(dept);
+    setDeptForm({
+      code: dept.code || '',
+      name_th: dept.name_th || '',
+      name_en: dept.name_en || '',
+      min_staff_required: dept.min_staff_required ?? 2,
+      max_leave_per_day: dept.max_leave_per_day ?? 2,
+      head_doctor_id: dept.head_doctor_id || '',
+      final_approver_id: dept.final_approver_id || 'c0000000-0000-0000-0000-000000000099'
+    });
+    setDeptModalOpen(true);
+  };
+
+  const handleSaveDept = async (e) => {
+    e.preventDefault();
+    try {
+      const url = editingDept ? `/api/departments/${editingDept.id}` : '/api/departments';
+      const method = editingDept ? 'PUT' : 'POST';
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(deptForm)
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'เกิดข้อผิดพลาด');
+      showToast(editingDept ? 'แก้ไขข้อมูลแผนกสำเร็จ' : 'เพิ่มแผนกใหม่สำเร็จ');
+      setDeptModalOpen(false);
+      fetchInitialData();
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  };
+
+  const handleDeleteDept = async (dept) => {
+    if (!window.confirm(`ยืนยันการลบแผนก "${dept.name_th}"?`)) return;
+    try {
+      const res = await fetch(`/api/departments/${dept.id}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'ไม่สามารถลบแผนกได้');
+      showToast('ลบแผนกเรียบร้อยแล้ว');
+      fetchInitialData();
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  };
+
+  // --- Handlers: Doctor Add/Edit/Delete & Bulk Import ---
+  const handleOpenAddDoctor = () => {
+    setEditingDoctor(null);
+    const defaultDept = departments.find(d => d.code !== 'EXEC') || departments[0];
+    setDoctorForm({
+      prefix_th: 'นพ.',
+      first_name_th: '',
+      last_name_th: '',
+      employee_id: `DOC-${String(doctors.length + 1).padStart(3, '0')}`,
+      license_no: '',
+      department_id: defaultDept?.id || '',
+      specialty_group: defaultDept?.staffing_groups?.[0]?.id || '',
+      doctor_type: 'FULL_TIME',
+      hire_date: new Date().toISOString().split('T')[0],
+      phone: '',
+      role: 'DOCTOR'
+    });
+    setDoctorModalOpen(true);
+  };
+
+  const handleOpenEditDoctor = (doc) => {
+    setEditingDoctor(doc);
+    const isHead = (doc.roles || []).includes('DEPT_HEAD');
+    setDoctorForm({
+      prefix_th: doc.prefix_th || 'นพ.',
+      first_name_th: doc.first_name_th || '',
+      last_name_th: doc.last_name_th || '',
+      employee_id: doc.employee_id || '',
+      license_no: doc.license_no || '',
+      department_id: doc.department_id || '',
+      specialty_group: doc.specialty_group || '',
+      doctor_type: doc.doctor_type || 'FULL_TIME',
+      hire_date: doc.hire_date || new Date().toISOString().split('T')[0],
+      phone: doc.phone || '',
+      role: isHead ? 'DEPT_HEAD' : 'DOCTOR'
+    });
+    setDoctorModalOpen(true);
+  };
+
+  const handleSaveDoctor = async (e) => {
+    e.preventDefault();
+    try {
+      const url = editingDoctor ? `/api/doctors/${editingDoctor.id}` : '/api/doctors';
+      const method = editingDoctor ? 'PUT' : 'POST';
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(doctorForm)
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'ไม่สามารถบันทึกข้อมูลแพทย์ได้');
+      showToast(editingDoctor ? 'แก้ไขข้อมูลแพทย์สำเร็จ' : 'เพิ่มรายชื่อแพทย์สำเร็จ');
+      setDoctorModalOpen(false);
+      fetchInitialData();
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  };
+
+  const handleDeleteDoctor = async (doc) => {
+    if (!window.confirm(`ยืนยันการลบรายชื่อ ${doc.prefix_th}${doc.first_name_th} ${doc.last_name_th}?`)) return;
+    try {
+      const res = await fetch(`/api/doctors/${doc.id}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'ไม่สามารถลบได้');
+      showToast('ลบรายชื่อแพทย์เรียบร้อยแล้ว');
+      fetchInitialData();
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  };
+
+  // Parse CSV/TSV text from Excel paste or file upload
+  const parseBulkText = (text) => {
+    setBulkRawText(text);
+    const lines = text
+      .split(/\r?\n/)
+      .map(l => l.trim())
+      .filter(Boolean);
+    if (lines.length === 0) {
+      setBulkPreviewRows([]);
+      return;
+    }
+
+    const parsed = [];
+    lines.forEach((line, idx) => {
+      // Detect delimiter (Tab from Excel copy-paste or Comma from CSV)
+      const cols = line.includes('\t')
+        ? line.split('\t').map(c => c.trim().replace(/^"|"$/g, ''))
+        : line.split(',').map(c => c.trim().replace(/^"|"$/g, ''));
+
+      // Skip header row if detected
+      if (
+        idx === 0 &&
+        (cols[0]?.includes('คำนำหน้า') ||
+          cols[0]?.toLowerCase().includes('prefix') ||
+          cols[1]?.includes('ชื่อ'))
+      ) {
+        return;
+      }
+
+      if (cols.length >= 2) {
+        parsed.push({
+          prefix_th: cols[0] || 'นพ.',
+          first_name_th: cols[1] || '',
+          last_name_th: cols[2] || '',
+          employee_id: cols[3] || `DOC-${Date.now().toString().slice(-3)}-${idx + 1}`,
+          license_no: cols[4] || '',
+          department: cols[5] || 'อายุรกรรม',
+          specialty_group: cols[6] || '',
+          doctor_type: cols[7] || 'FULL_TIME',
+          hire_date: cols[8] || new Date().toISOString().split('T')[0],
+          phone: cols[9] || '',
+          role: cols[10] || 'DOCTOR'
+        });
+      }
+    });
+    setBulkPreviewRows(parsed);
+  };
+
+  const handleBulkFileUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const content = evt.target?.result || '';
+      parseBulkText(String(content));
+    };
+    reader.readAsText(file, 'UTF-8');
+  };
+
+  const handleDownloadTemplateCsv = () => {
+    const csvContent =
+      '\uFEFFคำนำหน้า,ชื่อ,นามสกุล,รหัสพนักงาน,เลขใบประกอบวิชาชีพ,แผนก,สาขาเฉพาะทาง (ถ้ามี),ประเภท (FULL_TIME/PART_TIME),วันเริ่มงาน (YYYY-MM-DD),เบอร์โทรศัพท์,บทบาท (DOCTOR/DEPT_HEAD)\n' +
+      'นพ.,สมชาย,ใจดี,DOC-101,ว. 65432,อายุรกรรม,MED_GEN,FULL_TIME,2024-01-15,081-234-5678,DOCTOR\n' +
+      'พญ.,กมลชนก,รักษ์ดี,DOC-102,ว. 65433,สูตินรีเวช,,FULL_TIME,2024-03-01,089-876-5432,DOCTOR\n';
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'bsi_doctors_import_template.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleConfirmBulkImport = async () => {
+    if (bulkPreviewRows.length === 0) {
+      showToast('ไม่พบข้อมูลแพทย์ที่จะนำเข้า', 'error');
+      return;
+    }
+    setImportingBulk(true);
+    try {
+      const res = await fetch('/api/doctors/bulk-import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ doctors: bulkPreviewRows })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'นำเข้าไม่สำเร็จ');
+      showToast(data.message || 'นำเข้ารายชื่อแพทย์สำเร็จ');
+      setBulkModalOpen(false);
+      setBulkRawText('');
+      setBulkPreviewRows([]);
+      fetchInitialData();
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      setImportingBulk(false);
+    }
+  };
+
   // --- Handlers: Approval Routes (Grouped by Doctor) ---
   const handleSelectDoctorForRoute = (docId) => {
     setRouteDoctorId(docId);
@@ -379,7 +677,7 @@ export default function AdminMasterDataPage() {
       code: '',
       name_th: '',
       name_en: '',
-      count_mode: 'WORKING_DAYS',
+      count_mode: 'CALENDAR_DAYS',
       allows_half_day: true,
       requires_attachment: false,
       attachment_threshold_days: 2.0,
@@ -398,7 +696,7 @@ export default function AdminMasterDataPage() {
       code: lt.code,
       name_th: lt.name_th,
       name_en: lt.name_en || '',
-      count_mode: lt.count_mode || 'WORKING_DAYS',
+      count_mode: lt.count_mode || 'CALENDAR_DAYS',
       allows_half_day: lt.allows_half_day !== false,
       requires_attachment: Boolean(lt.requires_attachment),
       attachment_threshold_days: lt.attachment_threshold_days || 0,
@@ -467,7 +765,7 @@ export default function AdminMasterDataPage() {
         .sort((a, b) => Number(a.step_order) - Number(b.step_order));
       const step1 = docRoutes.find(r => Number(r.step_order) === 1) || null;
       const step2 = docRoutes.find(r => Number(r.step_order) === 2) || null;
-      const isDeptHead = doc.role === 'APPROVER' || (doc.employee_id && doc.employee_id.startsWith('HEAD-'));
+      const isDeptHead = doc.role === 'APPROVER' || doc.roles?.includes('DEPT_HEAD') || (doc.employee_id && doc.employee_id.startsWith('HEAD-')) || departments.some(dp => dp.head_doctor_id === doc.id);
       return {
         doctor: doc,
         doctor_id: doc.id,
@@ -543,7 +841,7 @@ export default function AdminMasterDataPage() {
             }`}
           >
             <GitMerge className="w-3.5 h-3.5" />
-            <span>สายการอนุมัติ ({groupedDoctorRoutes.length} ท่าน)</span>
+            <span>สายอนุมัติ & แผนก ({departments.filter(d => d.code !== 'EXEC').length} แผนก)</span>
           </button>
 
           <button
@@ -567,7 +865,7 @@ export default function AdminMasterDataPage() {
             }`}
           >
             <Users className="w-3.5 h-3.5" />
-            <span>แพทย์ & บัญชี LINE ({doctors.length})</span>
+            <span>รายชื่อแพทย์ & LINE ({doctors.filter(d => d.employee_id !== 'EMP-KOONG').length})</span>
           </button>
 
           <button
@@ -585,7 +883,7 @@ export default function AdminMasterDataPage() {
       </div>
 
       {/* ========================================================= */}
-      {/* TAB 1: APPROVAL ROUTES (ITEM 24)                          */}
+      {/* TAB 1: APPROVAL ROUTES BY DEPARTMENT + DEPT CRUD          */}
       {/* ========================================================= */}
       {activeTab === 'APPROVAL_ROUTES' && (
         <div className="space-y-4 animate-in fade-in duration-150">
@@ -595,7 +893,7 @@ export default function AdminMasterDataPage() {
             <div className="space-y-1">
               <div className="font-bold text-sky-900 flex items-center gap-1.5">
                 <GitMerge className="w-4 h-4 text-[#006699]" />
-                <span>รูปแบบสายการอนุมัติใบลาแพทย์ (แยกตามตำแหน่ง)</span>
+                <span>ตั้งค่าสายการอนุมัติรายแผนก (Department Approval Flow)</span>
               </div>
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-600">
                 <span className="inline-flex items-center gap-1">
@@ -604,156 +902,288 @@ export default function AdminMasterDataPage() {
                 </span>
                 <span className="inline-flex items-center gap-1">
                   <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold">หัวหน้าแผนก</span>
-                  <span>➔ อนุมัติโดยตรง: <b>นพ.ปริวรรธน์ (ผช.ผอ.)</b></span>
+                  <span>➔ อนุมัติโดยตรง (1 ขั้นตอน): <b>นพ.ปริวรรธน์ (ผช.ผอ.)</b></span>
                 </span>
               </div>
             </div>
-          </div>
-
-          {/* Action Row */}
-          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs flex flex-col sm:flex-row items-center justify-between gap-3">
-            <div className="relative w-full sm:w-80">
-              <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
-              <input
-                type="text"
-                value={routeSearch}
-                onChange={(e) => setRouteSearch(e.target.value)}
-                placeholder="ค้นหาชื่อแพทย์, แผนก, ผู้อนุมัติ..."
-                className="w-full pl-9 pr-3 py-1.5 text-xs rounded-lg border border-slate-200 bg-slate-50 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-[#006699]"
-              />
-            </div>
-
-            <div className="flex items-center gap-2 w-full sm:w-auto justify-end flex-wrap">
+            <div className="flex items-center gap-2 shrink-0 flex-wrap">
               <button
-                onClick={handleOpenAddRoute}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#006699] hover:bg-[#005580] text-white text-xs font-bold transition-all shadow-sm shadow-sky-900/10"
+                onClick={handleOpenAddDept}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#006699] hover:bg-[#005580] text-white text-xs font-bold transition-all shadow-sm"
               >
                 <Plus className="w-4 h-4" />
-                <span>ตั้งค่าสายอนุมัติรายบุคคล</span>
+                <span>เพิ่มแผนกใหม่</span>
+              </button>
+              <button
+                onClick={() => setShowIndividualRoutes(!showIndividualRoutes)}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold transition-all"
+              >
+                <UserCheck className="w-3.5 h-3.5 text-[#006699]" />
+                <span>{showIndividualRoutes ? 'ซ่อนสายอนุมัติรายบุคคล' : `ดู/แก้ไขรายบุคคล (${groupedDoctorRoutes.length} ท่าน)`}</span>
               </button>
             </div>
           </div>
 
-          {/* Table (1 Row Per Doctor) */}
+          {/* Department-Level Approval Routes Table */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
+            <div className="px-5 py-3.5 bg-slate-50/80 border-b border-slate-200 flex items-center justify-between flex-wrap gap-2">
+              <div className="flex items-center gap-2">
+                <Building2 className="w-4 h-4 text-[#006699]" />
+                <span className="text-xs font-bold text-slate-800">
+                  สายอนุมัติระดับแผนก (บันทึกครั้งเดียวมีผลกับแพทย์ทุกคนในแผนกอัตโนมัติ)
+                </span>
+              </div>
+              <span className="text-[11px] text-slate-500">
+                ทั้งหมด {departments.filter(d => d.code !== 'EXEC').length} แผนกคลินิก
+              </span>
+            </div>
+
             {loading ? (
               <div className="p-12 text-center text-slate-400 flex flex-col items-center justify-center gap-2">
                 <RefreshCw className="w-6 h-6 animate-spin text-[#006699]" />
-                <span className="text-xs">กำลังโหลดสายอนุมัติ...</span>
-              </div>
-            ) : filteredDoctorRoutes.length === 0 ? (
-              <div className="p-12 text-center text-slate-400 space-y-2">
-                <GitMerge className="w-8 h-8 mx-auto text-slate-300 stroke-[1.5]" />
-                <p className="text-sm font-medium text-slate-600">ไม่พบรายชื่อแพทย์ที่ค้นหา</p>
+                <span className="text-xs">กำลังโหลดข้อมูลแผนกและสายอนุมัติ...</span>
               </div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse text-xs">
                   <thead>
-                    <tr className="bg-slate-50/80 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider text-[11px]">
-                      <th className="py-3 px-4">แพทย์ผู้ขอลา</th>
-                      <th className="py-3 px-4">แผนก</th>
-                      <th className="py-3 px-4">ลำดับสายการอนุมัติ (Approval Flow)</th>
-                      <th className="py-3 px-4 text-right">จัดการ</th>
+                    <tr className="bg-slate-50/50 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider text-[11px]">
+                      <th className="py-3 px-4">แผนก (Department)</th>
+                      <th className="py-3 px-4">ขั้นที่ 1: หัวหน้าแผนก (Dept Head)</th>
+                      <th className="py-3 px-4">ขั้นที่ 2: ผู้อนุมัติสูงสุด (Final Approver)</th>
+                      <th className="py-3 px-4 text-right">จัดการแผนก & สายอนุมัติ</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {filteredDoctorRoutes.map((item) => (
-                      <tr key={item.doctor_id} className="hover:bg-slate-50/80 transition-colors">
-                        <td className="py-3.5 px-4">
-                          <div className="flex items-center gap-2.5">
-                            <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
-                              item.is_dept_head ? 'bg-emerald-50 text-emerald-700' : 'bg-sky-50 text-[#006699]'
-                            }`}>
-                              <UserCheck className="w-4 h-4" />
-                            </div>
-                            <div>
-                              <div className="font-bold text-slate-800 flex items-center gap-1.5 flex-wrap">
-                                <span>{item.doctor_name}</span>
-                                <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
-                                  item.is_dept_head
-                                    ? 'bg-emerald-100 text-emerald-800'
-                                    : 'bg-sky-100 text-sky-800'
-                                }`}>
-                                  {item.is_dept_head ? 'หัวหน้าแผนก' : 'แพทย์ในแผนก'}
+                    {departments
+                      .filter(dept => dept.code !== 'EXEC')
+                      .map((dept) => {
+                        const deptDocs = doctors.filter(
+                          d => d.department_id === dept.id && d.employee_id !== 'EMP-KOONG' && d.employee_id !== 'EXEC-PARIWAT'
+                        );
+                        return (
+                          <tr key={dept.id} className="hover:bg-slate-50/70 transition-colors">
+                            <td className="py-3.5 px-4">
+                              <div className="flex items-center gap-2.5">
+                                <span className="px-2 py-0.5 rounded-md bg-sky-50 border border-sky-200 text-[#006699] font-mono font-bold text-[10px]">
+                                  {dept.code}
                                 </span>
-                              </div>
-                              <div className="text-[10px] text-slate-400 font-mono">
-                                {item.doctor_employee_id}
-                              </div>
-                            </div>
-                          </div>
-                        </td>
-
-                        <td className="py-3.5 px-4 text-slate-600 font-medium whitespace-nowrap">
-                          แผนก{item.department_name}
-                        </td>
-
-                        <td className="py-3.5 px-4">
-                          {!item.has_route ? (
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-50 border border-amber-200 text-amber-700 text-[11px] font-semibold">
-                              <AlertCircle className="w-3.5 h-3.5" />
-                              <span>ยังไม่ได้ตั้งค่าผู้อนุมัติ</span>
-                            </span>
-                          ) : (
-                            <div className="flex items-center gap-2 flex-wrap">
-                              {/* Step 1 Badge */}
-                              {item.step1 && (
-                                <div className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-800">
-                                  <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
-                                    item.step2
-                                      ? 'bg-emerald-100 text-emerald-800'
-                                      : 'bg-purple-100 text-purple-800'
-                                  }`}>
-                                    {item.step2 ? 'ขั้นที่ 1' : 'อนุมัติโดยตรง (1 ขั้นตอน)'}
-                                  </span>
-                                  <span className="font-bold text-slate-800">{item.step1.approver_name}</span>
-                                </div>
-                              )}
-
-                              {/* Arrow + Step 2 Badge (if 2-step flow) */}
-                              {item.step2 && (
-                                <>
-                                  <ArrowRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                                  <div className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-purple-50/60 border border-purple-200 text-slate-800">
-                                    <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-800">
-                                      ขั้นที่ 2 (อนุมัติขั้นสุดท้าย)
-                                    </span>
-                                    <span className="font-bold text-slate-800">{item.step2.approver_name}</span>
+                                <div>
+                                  <div className="font-bold text-slate-800 text-xs">
+                                    แผนก{dept.name_th}
                                   </div>
-                                </>
-                              )}
-                            </div>
-                          )}
-                        </td>
+                                  <div className="text-[10px] text-slate-400">
+                                    {dept.name_en || '-'} • แพทย์ในสังกัด {deptDocs.length} ท่าน
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
 
-                        <td className="py-3.5 px-4 text-right whitespace-nowrap">
-                          <div className="flex items-center justify-end gap-1.5">
-                            <button
-                              onClick={() => handleOpenEditDoctorRoute(item)}
-                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-sky-50 hover:border-sky-200 text-slate-700 hover:text-[#006699] text-[11px] font-bold transition-colors"
-                            >
-                              <Edit2 className="w-3 h-3" />
-                              <span>ตั้งค่า / แก้ไข</span>
-                            </button>
-                            {item.has_route && (
-                              <button
-                                onClick={() => handleClearDoctorRoute(item)}
-                                className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
-                                title="ล้างสายอนุมัติ"
+                            <td className="py-3 px-4">
+                              <select
+                                value={dept.head_doctor_id || ''}
+                                onChange={(e) => handleDeptRouteChange(dept.id, 'head_doctor_id', e.target.value)}
+                                className="w-full max-w-[250px] p-2 rounded-xl border border-emerald-300 bg-emerald-50/40 text-slate-800 font-bold text-xs focus:ring-2 focus:ring-emerald-600 focus:bg-white"
                               >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
+                                <option value="">-- เลือกหัวหน้าแผนก (ขั้นที่ 1) --</option>
+                                {doctors
+                                  .filter(d => d.employee_id !== 'EMP-KOONG')
+                                  .map(d => (
+                                    <option key={d.id} value={d.id}>
+                                      {d.prefix_th}{d.first_name_th} {d.last_name_th} {d.department_id === dept.id ? '(ในแผนก)' : ''}
+                                    </option>
+                                  ))}
+                              </select>
+                            </td>
+
+                            <td className="py-3 px-4">
+                              <select
+                                value={dept.final_approver_id || 'c0000000-0000-0000-0000-000000000099'}
+                                onChange={(e) => handleDeptRouteChange(dept.id, 'final_approver_id', e.target.value)}
+                                className="w-full max-w-[250px] p-2 rounded-xl border border-purple-300 bg-purple-50/40 text-slate-800 font-bold text-xs focus:ring-2 focus:ring-purple-600 focus:bg-white"
+                              >
+                                {doctors
+                                  .filter(d => d.employee_id !== 'EMP-KOONG')
+                                  .map(d => (
+                                    <option key={d.id} value={d.id}>
+                                      {d.prefix_th}{d.first_name_th} {d.last_name_th}
+                                    </option>
+                                  ))}
+                              </select>
+                            </td>
+
+                            <td className="py-3 px-4 text-right whitespace-nowrap">
+                              <div className="flex items-center justify-end gap-1.5">
+                                <button
+                                  onClick={() => handleSaveDeptApprovalRoute(dept)}
+                                  disabled={savingDeptId === dept.id}
+                                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[#006699] hover:bg-[#005580] text-white text-[11px] font-bold transition-all shadow-2xs disabled:opacity-50"
+                                >
+                                  {savingDeptId === dept.id ? (
+                                    <RefreshCw className="w-3 h-3 animate-spin" />
+                                  ) : (
+                                    <Check className="w-3 h-3" />
+                                  )}
+                                  <span>บันทึกสายแผนก</span>
+                                </button>
+                                <button
+                                  onClick={() => handleOpenEditDept(dept)}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-[11px] font-semibold transition-colors"
+                                  title="แก้ไขชื่อแผนก / รหัสแผนก"
+                                >
+                                  <Edit2 className="w-3 h-3" />
+                                  <span>แก้ไขแผนก</span>
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteDept(dept)}
+                                  className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                                  title="ลบแผนก"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
                   </tbody>
                 </table>
               </div>
             )}
           </div>
+
+          {/* Collapsible Individual Doctor Route Overrides */}
+          {showIndividualRoutes && (
+            <div className="space-y-3 pt-2 animate-in fade-in duration-150">
+              <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs flex flex-col sm:flex-row items-center justify-between gap-3">
+                <div className="relative w-full sm:w-80">
+                  <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
+                  <input
+                    type="text"
+                    value={routeSearch}
+                    onChange={(e) => setRouteSearch(e.target.value)}
+                    placeholder="ค้นหาชื่อแพทย์, แผนก, ผู้อนุมัติ..."
+                    className="w-full pl-9 pr-3 py-1.5 text-xs rounded-lg border border-slate-200 bg-slate-50 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-[#006699]"
+                  />
+                </div>
+
+                <div className="flex items-center gap-2 w-full sm:w-auto justify-end flex-wrap">
+                  <button
+                    onClick={handleOpenAddRoute}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold transition-all shadow-sm"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>ตั้งค่าสายอนุมัติเฉพาะบุคคล (Override)</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse text-xs">
+                    <thead>
+                      <tr className="bg-slate-50/80 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider text-[11px]">
+                        <th className="py-3 px-4">แพทย์ผู้ขอลา</th>
+                        <th className="py-3 px-4">แผนก</th>
+                        <th className="py-3 px-4">ลำดับสายการอนุมัติ (Approval Flow)</th>
+                        <th className="py-3 px-4 text-right">จัดการเฉพาะบุคคล</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {filteredDoctorRoutes.map((item) => (
+                        <tr key={item.doctor_id} className="hover:bg-slate-50/80 transition-colors">
+                          <td className="py-3.5 px-4">
+                            <div className="flex items-center gap-2.5">
+                              <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
+                                item.is_dept_head ? 'bg-emerald-50 text-emerald-700' : 'bg-sky-50 text-[#006699]'
+                              }`}>
+                                <UserCheck className="w-4 h-4" />
+                              </div>
+                              <div>
+                                <div className="font-bold text-slate-800 flex items-center gap-1.5 flex-wrap">
+                                  <span>{item.doctor_name}</span>
+                                  <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                                    item.is_dept_head
+                                      ? 'bg-emerald-100 text-emerald-800'
+                                      : 'bg-sky-100 text-sky-800'
+                                  }`}>
+                                    {item.is_dept_head ? 'หัวหน้าแผนก' : 'แพทย์ในแผนก'}
+                                  </span>
+                                </div>
+                                <div className="text-[10px] text-slate-400 font-mono">
+                                  {item.doctor_employee_id}
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+
+                          <td className="py-3.5 px-4 text-slate-600 font-medium whitespace-nowrap">
+                            แผนก{item.department_name}
+                          </td>
+
+                          <td className="py-3.5 px-4">
+                            {!item.has_route ? (
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-50 border border-amber-200 text-amber-700 text-[11px] font-semibold">
+                                <AlertCircle className="w-3.5 h-3.5" />
+                                <span>ยังไม่ได้ตั้งค่าผู้อนุมัติ</span>
+                              </span>
+                            ) : (
+                              <div className="flex items-center gap-2 flex-wrap">
+                                {item.step1 && (
+                                  <div className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-800">
+                                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                                      item.step2
+                                        ? 'bg-emerald-100 text-emerald-800'
+                                        : 'bg-purple-100 text-purple-800'
+                                    }`}>
+                                      {item.step2 ? 'ขั้นที่ 1' : 'อนุมัติโดยตรง (1 ขั้นตอน)'}
+                                    </span>
+                                    <span className="font-bold text-slate-800">{item.step1.approver_name}</span>
+                                  </div>
+                                )}
+                                {item.step2 && (
+                                  <>
+                                    <ArrowRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                    <div className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-purple-50/60 border border-purple-200 text-slate-800">
+                                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-800">
+                                        ขั้นที่ 2 (อนุมัติขั้นสุดท้าย)
+                                      </span>
+                                      <span className="font-bold text-slate-800">{item.step2.approver_name}</span>
+                                    </div>
+                                  </>
+                                )}
+                              </div>
+                            )}
+                          </td>
+
+                          <td className="py-3.5 px-4 text-right whitespace-nowrap">
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button
+                                onClick={() => handleOpenEditDoctorRoute(item)}
+                                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-sky-50 hover:border-sky-200 text-slate-700 hover:text-[#006699] text-[11px] font-bold transition-colors"
+                              >
+                                <Edit2 className="w-3 h-3" />
+                                <span>แก้ไข</span>
+                              </button>
+                              {item.has_route && (
+                                <button
+                                  onClick={() => handleClearDoctorRoute(item)}
+                                  className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                                  title="ล้างสายอนุมัติ"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -910,26 +1340,49 @@ export default function AdminMasterDataPage() {
         <div className="space-y-4 animate-in fade-in duration-150">
           
           {/* Action Row & Summary */}
-          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs flex flex-col sm:flex-row items-center justify-between gap-3">
-            <div className="relative w-full sm:w-80">
-              <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
-              <input
-                type="text"
-                value={doctorSearch}
-                onChange={(e) => setDoctorSearch(e.target.value)}
-                placeholder="ค้นหาแพทย์, แผนก, รหัสพนักงาน, เลข ว...."
-                className="w-full pl-9 pr-3 py-1.5 text-xs rounded-lg border border-slate-200 bg-slate-50 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-[#006699]"
-              />
+          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+              <div className="relative w-full sm:w-72">
+                <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
+                <input
+                  type="text"
+                  value={doctorSearch}
+                  onChange={(e) => setDoctorSearch(e.target.value)}
+                  placeholder="ค้นหาแพทย์, แผนก, รหัสพนักงาน, เลข ว...."
+                  className="w-full pl-9 pr-3 py-1.5 text-xs rounded-lg border border-slate-200 bg-slate-50 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-[#006699]"
+                />
+              </div>
+
+              <div className="flex items-center gap-2 text-xs flex-wrap">
+                <div className="flex items-center gap-1.5 text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200 font-semibold">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                  <span>ผูก LINE: {doctors.filter(d => d.employee_id !== 'EMP-KOONG' && d.line_user_id).length} ท่าน</span>
+                </div>
+                <div className="flex items-center gap-1.5 text-slate-600 bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200 font-semibold">
+                  <span>ยังไม่ผูก: {doctors.filter(d => d.employee_id !== 'EMP-KOONG' && !d.line_user_id).length} ท่าน</span>
+                </div>
+              </div>
             </div>
 
-            <div className="flex items-center gap-3 text-xs">
-              <div className="flex items-center gap-1.5 text-emerald-700 bg-emerald-50 px-3 py-1 rounded-lg border border-emerald-200 font-semibold">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                <span>ผูก LINE แล้ว: {doctors.filter(d => d.line_user_id).length} ท่าน</span>
-              </div>
-              <div className="flex items-center gap-1.5 text-slate-600 bg-slate-100 px-3 py-1 rounded-lg border border-slate-200 font-semibold">
-                <span>ยังไม่ผูก: {doctors.filter(d => !d.line_user_id).length} ท่าน</span>
-              </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                onClick={handleOpenAddDoctor}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#006699] hover:bg-[#005580] text-white text-xs font-bold transition-all shadow-sm"
+              >
+                <Plus className="w-4 h-4" />
+                <span>เพิ่มรายชื่อแพทย์ (รายคน)</span>
+              </button>
+              <button
+                onClick={() => {
+                  setBulkRawText('');
+                  setBulkPreviewRows([]);
+                  setBulkModalOpen(true);
+                }}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all shadow-sm"
+              >
+                <Upload className="w-4 h-4" />
+                <span>นำเข้าจาก Excel / CSV (หลายคน)</span>
+              </button>
             </div>
           </div>
 
@@ -940,9 +1393,8 @@ export default function AdminMasterDataPage() {
                 <thead>
                   <tr className="bg-slate-50/80 border-b border-slate-200 text-slate-600 font-bold uppercase tracking-wider text-[11px]">
                     <th className="py-3 px-4">แพทย์ / รหัส</th>
-                    <th className="py-3 px-4">แผนก</th>
+                    <th className="py-3 px-4">แผนก / สาขา</th>
                     <th className="py-3 px-4">ประเภทแพทย์</th>
-                    <th className="py-3 px-4">รูปแบบการทำงาน (ส.-อา.)</th>
                     <th className="py-3 px-4">สถานะ LINE Official</th>
                     <th className="py-3 px-4">เบอร์โทรศัพท์</th>
                     <th className="py-3 px-4 text-right">จัดการ</th>
@@ -950,6 +1402,7 @@ export default function AdminMasterDataPage() {
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {doctors
+                    .filter(d => d.employee_id !== 'EMP-KOONG')
                     .filter(d => {
                       if (!doctorSearch.trim()) return true;
                       const q = doctorSearch.toLowerCase();
@@ -961,6 +1414,8 @@ export default function AdminMasterDataPage() {
                     })
                     .map(doc => {
                       const isLinked = Boolean(doc.line_user_id);
+                      const deptObj = departments.find(dep => dep.id === doc.department_id);
+                      const specGroupObj = (deptObj?.staffing_groups || []).find(g => (g.id || g.code) === doc.specialty_group);
                       return (
                         <tr key={doc.id} className="hover:bg-slate-50/60 transition-colors">
                           <td className="py-3 px-4">
@@ -974,7 +1429,7 @@ export default function AdminMasterDataPage() {
                                 <span className="font-bold text-slate-800 block text-xs">
                                   {doc.prefix_th}{doc.first_name_th} {doc.last_name_th}
                                 </span>
-                                <div className="flex items-center gap-1.5 mt-0.5">
+                                <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                                   <span className="text-[10px] text-slate-400 font-mono">
                                     {doc.employee_id}
                                   </span>
@@ -988,7 +1443,12 @@ export default function AdminMasterDataPage() {
                             </div>
                           </td>
                           <td className="py-3 px-4 text-slate-600 font-medium">
-                            {doc.department_name || 'ไม่ระบุ'}
+                            <div>{doc.department_name || deptObj?.name_th || 'ไม่ระบุ'}</div>
+                            {specGroupObj && (
+                              <span className="inline-block mt-0.5 px-1.5 py-0.2 rounded text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                                {specGroupObj.name_th}
+                              </span>
+                            )}
                           </td>
                           <td className="py-3 px-4">
                             <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
@@ -1000,37 +1460,13 @@ export default function AdminMasterDataPage() {
                             </span>
                           </td>
                           <td className="py-3 px-4">
-                            <button
-                              type="button"
-                              onClick={() => handleToggleDoctorWorkingPattern(doc)}
-                              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold border transition-all cursor-pointer ${
-                                (doc.working_pattern || (doc.doctor_type === 'PART_TIME' ? 'SHIFT_BASED' : 'OFFICE_HOURS')) === 'OFFICE_HOURS'
-                                  ? 'bg-sky-50 text-[#006699] border-sky-200 hover:bg-sky-100 hover:border-sky-300'
-                                  : 'bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100 hover:border-purple-300'
-                              }`}
-                              title="คลิกเพื่อสลับ: จันทร์-ศุกร์ (หยุด ส.-อา.) vs ตามตารางเวร (Shift-based)"
-                            >
-                              {(doc.working_pattern || (doc.doctor_type === 'PART_TIME' ? 'SHIFT_BASED' : 'OFFICE_HOURS')) === 'OFFICE_HOURS' ? (
-                                <>
-                                  <Calendar className="w-3 h-3 text-[#006699]" />
-                                  <span>จันทร์-ศุกร์ (หยุด ส.-อา.)</span>
-                                </>
-                              ) : (
-                                <>
-                                  <Activity className="w-3 h-3 text-purple-600" />
-                                  <span>ตามตารางเวร (Shift-based)</span>
-                                </>
-                              )}
-                            </button>
-                          </td>
-                          <td className="py-3 px-4">
                             {isLinked ? (
                               <div className="flex items-center gap-1.5">
                                 <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
                                   <Check className="w-3 h-3 text-emerald-600" />
                                   <span>ผูกแล้ว</span>
                                 </span>
-                                <span className="text-[10px] text-slate-400 font-mono truncate max-w-[120px]" title={doc.line_user_id}>
+                                <span className="text-[10px] text-slate-400 font-mono truncate max-w-[100px]" title={doc.line_user_id}>
                                   {doc.line_display_name || doc.line_user_id.slice(0, 10) + '...'}
                                 </span>
                               </div>
@@ -1044,21 +1480,30 @@ export default function AdminMasterDataPage() {
                           <td className="py-3 px-4 text-slate-600 font-mono text-[11px]">
                             {doc.phone || '-'}
                           </td>
-                          <td className="py-3 px-4 text-right">
+                          <td className="py-3 px-4 text-right whitespace-nowrap">
                             <div className="flex items-center justify-end gap-1.5">
+                              <button
+                                onClick={() => handleOpenEditDoctor(doc)}
+                                className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 text-[11px] font-semibold transition-colors"
+                                title="แก้ไขข้อมูลแพทย์"
+                              >
+                                <Edit2 className="w-3 h-3" />
+                                <span>แก้ไข</span>
+                              </button>
+
                               <button
                                 onClick={() => handleOpenQuotaModal(doc)}
                                 className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-sky-200 text-[#006699] hover:bg-sky-50 text-[11px] font-semibold transition-colors shadow-2xs"
                                 title="ตั้งค่า/แก้ไขโควตาวันลาประจำปีของแพทย์ท่านนี้"
                               >
                                 <Sliders className="w-3 h-3" />
-                                <span>ตั้งค่าโควตา</span>
+                                <span>โควตา</span>
                               </button>
 
                               {isLinked ? (
                                 <button
                                   onClick={() => handleUnlinkDoctorLine(doc.id, `${doc.prefix_th}${doc.first_name_th}`)}
-                                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-rose-200 text-rose-600 hover:bg-rose-50 text-[11px] font-semibold transition-colors"
+                                  className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-rose-200 text-rose-600 hover:bg-rose-50 text-[11px] font-semibold transition-colors"
                                   title="ยกเลิกการผูกเพื่ออนุญาตให้แพทย์ผูก LINE ใหม่ได้"
                                 >
                                   <UserX className="w-3 h-3" />
@@ -1070,12 +1515,20 @@ export default function AdminMasterDataPage() {
                                     navigator.clipboard.writeText(window.location.origin);
                                     showToast('คัดลอกลิงก์หน้าลงทะเบียนเข้าใช้งานให้แพทย์แล้ว');
                                   }}
-                                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 text-[11px] font-medium transition-colors"
+                                  className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 text-[11px] font-medium transition-colors"
                                 >
                                   <Copy className="w-3 h-3" />
-                                  <span>คัดลอกลิงก์</span>
+                                  <span>ลิงก์</span>
                                 </button>
                               )}
+
+                              <button
+                                onClick={() => handleDeleteDoctor(doc)}
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                                title="ลบรายชื่อแพทย์"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
                             </div>
                           </td>
                         </tr>
@@ -1104,10 +1557,10 @@ export default function AdminMasterDataPage() {
                 </div>
                 <div>
                   <h3 className="text-sm font-bold text-slate-800">
-                    ตั้งค่าข้อมูลติดต่อฝ่ายการแพทย์ & แจ้งเหตุฉุกเฉิน
+                    ตั้งค่าข้อมูลผู้ประสานงาน (HR / ฝ่ายการแพทย์)
                   </h3>
                   <p className="text-[11px] text-slate-500">
-                    ข้อมูลนี้จะถูกนำไปแสดงบนปุ่มโทรออก One-Tap Call ในหน้ายื่นใบลา และข้อความแจ้งเตือนอัตโนมัติใน LINE
+                    ระบุชื่อผู้ประสานงานและเบอร์โทรศัพท์สำหรับให้แพทย์ติดต่อโดยตรง
                   </p>
                 </div>
               </div>
@@ -1116,112 +1569,39 @@ export default function AdminMasterDataPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block font-bold text-slate-700 mb-1">
-                      ชื่อหน่วยงาน / ฝ่าย <span className="text-rose-500">*</span>
+                      ชื่อผู้ประสานงานหลัก <span className="text-rose-500">*</span>
                     </label>
                     <input
                       type="text"
-                      value={contactSettings.department_name}
-                      onChange={(e) => setContactSettings({ ...contactSettings, department_name: e.target.value })}
-                      placeholder="เช่น ฝ่ายการแพทย์ (Medical Affairs)"
-                      className="w-full p-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-[#006699]"
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block font-bold text-slate-700 mb-1">
-                      ชื่อผู้ประสานงานหลัก (ที่จะแสดงให้แพทย์เห็น) <span className="text-rose-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={contactSettings.coordinator_name}
+                      value={contactSettings.coordinator_name || ''}
                       onChange={(e) => setContactSettings({ ...contactSettings, coordinator_name: e.target.value })}
-                      placeholder="เช่น คุณสิริมาศ หรือ เจ้าหน้าที่ฝ่ายการแพทย์"
-                      className="w-full p-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-[#006699]"
+                      placeholder="คุณธัญญธร ตันติกุล (พี่กุ้ง)"
+                      className="w-full p-2.5 rounded-xl border border-slate-300 font-semibold text-slate-800 focus:ring-2 focus:ring-[#006699]"
                       required
                     />
                   </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div className="sm:col-span-2">
-                    <label className="block font-bold text-slate-700 mb-1">
-                      เบอร์โทรศัพท์ฉุกเฉิน (เบอร์หลักของโรงพยาบาล) <span className="text-rose-500">*</span>
-                    </label>
-                    <div className="relative">
-                      <Phone className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
-                      <input
-                        type="text"
-                        value={contactSettings.phone_emergency}
-                        onChange={(e) => setContactSettings({ ...contactSettings, phone_emergency: e.target.value })}
-                        placeholder="076-361-888"
-                        className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-300 font-mono font-bold text-slate-800 focus:ring-2 focus:ring-[#006699]"
-                        required
-                      />
-                    </div>
-                  </div>
 
                   <div>
                     <label className="block font-bold text-slate-700 mb-1">
-                      เบอร์ต่อ (Extension)
-                    </label>
-                    <input
-                      type="text"
-                      value={contactSettings.phone_ext}
-                      onChange={(e) => setContactSettings({ ...contactSettings, phone_ext: e.target.value })}
-                      placeholder="เช่น 1234"
-                      className="w-full p-2.5 rounded-xl border border-slate-300 font-mono focus:ring-2 focus:ring-[#006699]"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block font-bold text-slate-700 mb-1">
-                      เบอร์มือถือสายตรง (Hotline 24 ชม.)
+                      เบอร์โทรศัพท์ติดต่อ <span className="text-rose-500">*</span>
                     </label>
                     <div className="relative">
                       <Smartphone className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
                       <input
                         type="text"
-                        value={contactSettings.phone_hotline}
-                        onChange={(e) => setContactSettings({ ...contactSettings, phone_hotline: e.target.value })}
-                        placeholder="081-999-8888"
-                        className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-300 font-mono focus:ring-2 focus:ring-[#006699]"
+                        value={contactSettings.phone_hotline || ''}
+                        onChange={(e) =>
+                          setContactSettings({
+                            ...contactSettings,
+                            phone_hotline: e.target.value,
+                            phone_emergency: e.target.value
+                          })
+                        }
+                        placeholder="089-470-9256"
+                        className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-300 font-mono font-bold text-slate-800 focus:ring-2 focus:ring-[#006699]"
+                        required
                       />
                     </div>
-                  </div>
-
-                  <div>
-                    <label className="block font-bold text-slate-700 mb-1">
-                      อีเมลติดต่อฝ่ายการแพทย์
-                    </label>
-                    <div className="relative">
-                      <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
-                      <input
-                        type="email"
-                        value={contactSettings.email}
-                        onChange={(e) => setContactSettings({ ...contactSettings, email: e.target.value })}
-                        placeholder="medical_affairs@bsi.hospital"
-                        className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-[#006699]"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">
-                    สถานที่ติดต่อภายในโรงพยาบาล
-                  </label>
-                  <div className="relative">
-                    <MapPin className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
-                    <input
-                      type="text"
-                      value={contactSettings.location}
-                      onChange={(e) => setContactSettings({ ...contactSettings, location: e.target.value })}
-                      placeholder="เช่น อาคาร A ชั้น 3 ฝ่ายการแพทย์ โรงพยาบาลกรุงเทพศิริโรจน์"
-                      className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-[#006699]"
-                    />
                   </div>
                 </div>
 
@@ -1232,7 +1612,7 @@ export default function AdminMasterDataPage() {
                   </div>
                   <input
                     type="checkbox"
-                    checked={contactSettings.notify_line}
+                    checked={Boolean(contactSettings.notify_line)}
                     onChange={(e) => setContactSettings({ ...contactSettings, notify_line: e.target.checked })}
                     className="w-4 h-4 rounded text-[#006699]"
                   />
@@ -1270,39 +1650,30 @@ export default function AdminMasterDataPage() {
               {/* Simulation of Emergency banner */}
               <div className="bg-white rounded-2xl border border-rose-200 p-4 shadow-sm space-y-3">
                 <div className="text-[10px] uppercase font-bold text-rose-600 tracking-wider">
-                  กล่องแจ้งเตือนลาฉุกเฉิน (Same-day Leave)
+                  กล่องแจ้งเตือนติดต่อกรณีฉุกเฉิน / โควตาเต็ม
                 </div>
                 <div className="p-3 bg-rose-50 rounded-xl border border-rose-200 space-y-2">
                   <p className="text-[11px] text-rose-800 leading-snug">
-                    กรุณาโทรแจ้งฝ่ายการแพทย์ ({contactSettings.coordinator_name || 'เจ้าหน้าที่'}) โดยตรงทันที เพื่อประสานงานปิดตารางออกตรวจ
+                    กรณีมีเหตุจำเป็นเร่งด่วน กรุณาติดต่อ {contactSettings.coordinator_name || 'คุณธัญญธร ตันติกุล (พี่กุ้ง)'} โดยตรง:
                   </p>
                   <div className="py-2 px-3 bg-rose-600 text-white rounded-lg text-xs font-bold text-center flex items-center justify-center gap-1.5 shadow-xs">
                     <Phone className="w-3.5 h-3.5" />
-                    <span>โทรแจ้งฝ่ายการแพทย์ ({contactSettings.phone_emergency || '076-361-888'}{contactSettings.phone_ext ? ` ต่อ ${contactSettings.phone_ext}` : ''})</span>
+                    <span>โทรติดต่อ {contactSettings.coordinator_name || 'พี่กุ้ง'} ({contactSettings.phone_hotline || '089-470-9256'})</span>
                   </div>
                 </div>
               </div>
 
               {/* Contact Card Preview */}
-              <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm space-y-2 text-xs">
+              <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm space-y-1.5 text-xs">
                 <div className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
-                  นามบัตรหน่วยงาน
+                  ข้อมูลผู้ประสานงานในระบบ
                 </div>
                 <div className="font-bold text-slate-800 text-sm">
-                  {contactSettings.department_name || 'ฝ่ายการแพทย์'}
+                  {contactSettings.coordinator_name || 'คุณธัญญธร ตันติกุล (พี่กุ้ง)'}
                 </div>
-                <div className="text-slate-500 text-[11px] space-y-1">
-                  <div>ผู้ประสานงาน: <strong className="text-slate-700">{contactSettings.coordinator_name || '-'}</strong></div>
-                  <div>เบอร์โทรศัพท์: <strong className="text-slate-700">{contactSettings.phone_emergency || '-'} {contactSettings.phone_ext ? `(ต่อ ${contactSettings.phone_ext})` : ''}</strong></div>
-                  {contactSettings.phone_hotline && (
-                    <div>สายด่วน: <strong className="text-slate-700">{contactSettings.phone_hotline}</strong></div>
-                  )}
-                  {contactSettings.email && (
-                    <div>อีเมล: <strong className="text-slate-700">{contactSettings.email}</strong></div>
-                  )}
-                  {contactSettings.location && (
-                    <div>สถานที่: <span className="text-slate-600">{contactSettings.location}</span></div>
-                  )}
+                <div className="text-slate-700 text-xs font-mono font-bold flex items-center gap-1.5">
+                  <Phone className="w-3.5 h-3.5 text-[#006699]" />
+                  <span>{contactSettings.phone_hotline || '089-470-9256'}</span>
                 </div>
               </div>
 
@@ -1494,8 +1865,8 @@ export default function AdminMasterDataPage() {
                     onChange={(e) => setTypeForm({ ...typeForm, count_mode: e.target.value })}
                     className="w-full p-2 rounded-lg border border-slate-300 bg-white"
                   >
+                    <option value="CALENDAR_DAYS">ทุกวันตามปฏิทิน (CALENDAR_DAYS - แพทย์ไม่มีวันหยุดเสาร์-อาทิตย์)</option>
                     <option value="WORKING_DAYS">วันทำการ (WORKING_DAYS)</option>
-                    <option value="CALENDAR_DAYS">ทุกวันปฏิทิน (CALENDAR_DAYS)</option>
                   </select>
                 </div>
                 <div>
@@ -1778,6 +2149,507 @@ export default function AdminMasterDataPage() {
                 </div>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* MODAL 5: ADD / EDIT DEPARTMENT                            */}
+      {/* ========================================================= */}
+      {deptModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden animate-in zoom-in-95 duration-150">
+            <div className="bg-slate-50 px-5 py-4 border-b border-slate-200 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Building2 className="w-4 h-4 text-[#006699]" />
+                <h2 className="text-sm font-bold text-slate-800">
+                  {editingDept ? 'แก้ไขข้อมูลแผนก & สายอนุมัติ' : 'เพิ่มแผนกใหม่'}
+                </h2>
+              </div>
+              <button onClick={() => setDeptModalOpen(false)} className="text-slate-400 hover:text-slate-600">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveDept} className="p-5 space-y-3.5 text-xs">
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    รหัสแผนก <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={deptForm.code}
+                    onChange={(e) => setDeptForm({ ...deptForm, code: e.target.value.toUpperCase() })}
+                    placeholder="เช่น MED, PED"
+                    className="w-full p-2 rounded-lg border border-slate-300 font-mono uppercase"
+                    required
+                  />
+                </div>
+                <div className="col-span-2">
+                  <label className="block font-bold text-slate-700 mb-1">
+                    ชื่อแผนก (ภาษาไทย) <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={deptForm.name_th}
+                    onChange={(e) => setDeptForm({ ...deptForm, name_th: e.target.value })}
+                    placeholder="เช่น อายุรกรรม, ศัลยกรรมกระดูกและข้อ"
+                    className="w-full p-2 rounded-lg border border-slate-300"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">ชื่อภาษาอังกฤษ (Optional)</label>
+                <input
+                  type="text"
+                  value={deptForm.name_en}
+                  onChange={(e) => setDeptForm({ ...deptForm, name_en: e.target.value })}
+                  placeholder="e.g. Internal Medicine"
+                  className="w-full p-2 rounded-lg border border-slate-300"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">แพทย์ขั้นต่ำที่ต้องเหลือ (ท่าน)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={deptForm.min_staff_required}
+                    onChange={(e) => setDeptForm({ ...deptForm, min_staff_required: parseInt(e.target.value, 10) || 0 })}
+                    className="w-full p-2 rounded-lg border border-slate-300 font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">ลาพร้อมกันสูงสุด/วัน (ท่าน)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={deptForm.max_leave_per_day}
+                    onChange={(e) => setDeptForm({ ...deptForm, max_leave_per_day: parseInt(e.target.value, 10) || 1 })}
+                    className="w-full p-2 rounded-lg border border-slate-300 font-bold"
+                  />
+                </div>
+              </div>
+
+              <div className="p-3 rounded-xl bg-emerald-50/60 border border-emerald-200 space-y-2">
+                <label className="block font-bold text-emerald-900">
+                  ขั้นที่ 1: หัวหน้าแผนก (ผู้อนุมัติต้นสังกัด)
+                </label>
+                <select
+                  value={deptForm.head_doctor_id}
+                  onChange={(e) => setDeptForm({ ...deptForm, head_doctor_id: e.target.value })}
+                  className="w-full p-2 rounded-lg border border-emerald-300 bg-white font-semibold"
+                >
+                  <option value="">-- ยังไม่ระบุหัวหน้าแผนก --</option>
+                  {doctors
+                    .filter(d => d.employee_id !== 'EMP-KOONG')
+                    .map(d => (
+                      <option key={d.id} value={d.id}>
+                        {d.prefix_th}{d.first_name_th} {d.last_name_th}
+                      </option>
+                    ))}
+                </select>
+              </div>
+
+              <div className="p-3 rounded-xl bg-purple-50/60 border border-purple-200 space-y-2">
+                <label className="block font-bold text-purple-900">
+                  ขั้นที่ 2: ผู้อนุมัติสูงสุด (ผช.ผอ.)
+                </label>
+                <select
+                  value={deptForm.final_approver_id}
+                  onChange={(e) => setDeptForm({ ...deptForm, final_approver_id: e.target.value })}
+                  className="w-full p-2 rounded-lg border border-purple-300 bg-white font-semibold"
+                >
+                  {doctors
+                    .filter(d => d.employee_id !== 'EMP-KOONG')
+                    .map(d => (
+                      <option key={d.id} value={d.id}>
+                        {d.prefix_th}{d.first_name_th} {d.last_name_th}
+                      </option>
+                    ))}
+                </select>
+              </div>
+
+              <div className="pt-3 border-t border-slate-100 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setDeptModalOpen(false)}
+                  className="px-3.5 py-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50"
+                >
+                  ยกเลิก
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 rounded-xl bg-[#006699] hover:bg-[#005580] text-white font-bold shadow-xs"
+                >
+                  บันทึกแผนก
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* MODAL 6: ADD / EDIT SINGLE DOCTOR                         */}
+      {/* ========================================================= */}
+      {doctorModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-lg w-full shadow-2xl border border-slate-200 overflow-hidden animate-in zoom-in-95 duration-150 my-8">
+            <div className="bg-slate-50 px-5 py-4 border-b border-slate-200 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Users className="w-4 h-4 text-[#006699]" />
+                <h2 className="text-sm font-bold text-slate-800">
+                  {editingDoctor ? 'แก้ไขข้อมูลแพทย์' : 'เพิ่มรายชื่อแพทย์ใหม่ (รายคน)'}
+                </h2>
+              </div>
+              <button onClick={() => setDoctorModalOpen(false)} className="text-slate-400 hover:text-slate-600">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveDoctor} className="p-5 space-y-3.5 text-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">คำนำหน้า</label>
+                  <select
+                    value={doctorForm.prefix_th}
+                    onChange={(e) => setDoctorForm({ ...doctorForm, prefix_th: e.target.value })}
+                    className="w-full p-2 rounded-lg border border-slate-300 bg-white font-semibold"
+                  >
+                    <option value="นพ.">นพ.</option>
+                    <option value="พญ.">พญ.</option>
+                    <option value="ทพ.">ทพ.</option>
+                    <option value="ทพญ.">ทพญ.</option>
+                  </select>
+                </div>
+                <div className="sm:col-span-1">
+                  <label className="block font-bold text-slate-700 mb-1">
+                    ชื่อจริง <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={doctorForm.first_name_th}
+                    onChange={(e) => setDoctorForm({ ...doctorForm, first_name_th: e.target.value })}
+                    placeholder="เช่น ชาติชาย"
+                    className="w-full p-2 rounded-lg border border-slate-300"
+                    required
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block font-bold text-slate-700 mb-1">
+                    นามสกุล <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={doctorForm.last_name_th}
+                    onChange={(e) => setDoctorForm({ ...doctorForm, last_name_th: e.target.value })}
+                    placeholder="เช่น วิสัยทัศน์"
+                    className="w-full p-2 rounded-lg border border-slate-300"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">รหัสพนักงาน (Employee ID)</label>
+                  <input
+                    type="text"
+                    value={doctorForm.employee_id}
+                    onChange={(e) => setDoctorForm({ ...doctorForm, employee_id: e.target.value })}
+                    placeholder="เว้นว่างเพื่อสร้างอัตโนมัติ (เช่น DOC-025)"
+                    className="w-full p-2 rounded-lg border border-slate-300 font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">เลขใบประกอบวิชาชีพ (เลข ว.)</label>
+                  <input
+                    type="text"
+                    value={doctorForm.license_no}
+                    onChange={(e) => setDoctorForm({ ...doctorForm, license_no: e.target.value })}
+                    placeholder="เช่น ว. 48921 หรือ ท. 9821"
+                    className="w-full p-2 rounded-lg border border-slate-300 font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    แผนกที่สังกัด <span className="text-rose-500">*</span>
+                  </label>
+                  <select
+                    value={doctorForm.department_id}
+                    onChange={(e) => setDoctorForm({ ...doctorForm, department_id: e.target.value, specialty_group: '' })}
+                    className="w-full p-2 rounded-lg border border-slate-300 bg-white font-semibold"
+                    required
+                  >
+                    <option value="">-- เลือกแผนก --</option>
+                    {departments
+                      .filter(d => d.code !== 'EXEC')
+                      .map(d => (
+                        <option key={d.id} value={d.id}>
+                          แผนก{d.name_th} ({d.code})
+                        </option>
+                      ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">สาขาเฉพาะทาง (ถ้าแผนกแยกสาขา)</label>
+                  {(() => {
+                    const selDept = departments.find(d => d.id === doctorForm.department_id);
+                    const groups = selDept?.staffing_groups || [];
+                    return (
+                      <select
+                        value={doctorForm.specialty_group}
+                        onChange={(e) => setDoctorForm({ ...doctorForm, specialty_group: e.target.value })}
+                        disabled={groups.length === 0}
+                        className="w-full p-2 rounded-lg border border-slate-300 bg-white disabled:bg-slate-100"
+                      >
+                        <option value="">{groups.length > 0 ? '-- เลือกสาขาเฉพาะทาง --' : 'ไม่แยกสาขา'}</option>
+                        {groups.map(g => (
+                          <option key={g.id || g.code} value={g.id || g.code}>
+                            {g.name_th} (ขั้นต่ำ {g.min_staff_required ?? g.min_staff ?? 1} ท่าน)
+                          </option>
+                        ))}
+                      </select>
+                    );
+                  })()}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">ประเภทแพทย์</label>
+                  <select
+                    value={doctorForm.doctor_type}
+                    onChange={(e) => setDoctorForm({ ...doctorForm, doctor_type: e.target.value })}
+                    className="w-full p-2 rounded-lg border border-slate-300 bg-white"
+                  >
+                    <option value="FULL_TIME">แพทย์ประจำ (Full-Time)</option>
+                    <option value="PART_TIME">แพทย์ Part-Time</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">บทบาทในระบบ</label>
+                  <select
+                    value={doctorForm.role}
+                    onChange={(e) => setDoctorForm({ ...doctorForm, role: e.target.value })}
+                    className="w-full p-2 rounded-lg border border-slate-300 bg-white font-semibold"
+                  >
+                    <option value="DOCTOR">แพทย์ในแผนก (ทั่วไป)</option>
+                    <option value="DEPT_HEAD">หัวหน้าแผนก (ผู้อนุมัติขั้นที่ 1)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">วันที่เริ่มงาน (Hire Date)</label>
+                  <input
+                    type="date"
+                    value={doctorForm.hire_date}
+                    onChange={(e) => setDoctorForm({ ...doctorForm, hire_date: e.target.value })}
+                    className="w-full p-2 rounded-lg border border-slate-300"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">เบอร์โทรศัพท์</label>
+                  <input
+                    type="text"
+                    value={doctorForm.phone}
+                    onChange={(e) => setDoctorForm({ ...doctorForm, phone: e.target.value })}
+                    placeholder="เช่น 081-234-5678"
+                    className="w-full p-2 rounded-lg border border-slate-300 font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="p-2.5 rounded-xl bg-sky-50 border border-sky-100 text-[11px] text-sky-900">
+                💡 เมื่อบันทึกแล้ว ระบบจะผูก <b>สายการอนุมัติตามแผนก</b> และสร้าง <b>โควตาวันลาประจำปีมาตรฐาน</b> ให้แพทย์ท่านนี้อัตโนมัติทันที
+              </div>
+
+              <div className="pt-3 border-t border-slate-100 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setDoctorModalOpen(false)}
+                  className="px-3.5 py-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50"
+                >
+                  ยกเลิก
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 rounded-xl bg-[#006699] hover:bg-[#005580] text-white font-bold shadow-xs"
+                >
+                  {editingDoctor ? 'บันทึกการแก้ไข' : 'เพิ่มรายชื่อแพทย์'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* MODAL 7: BULK IMPORT DOCTORS FROM EXCEL / CSV             */}
+      {/* ========================================================= */}
+      {bulkModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-3xl w-full shadow-2xl border border-slate-200 overflow-hidden animate-in zoom-in-95 duration-150 my-8">
+            <div className="bg-slate-50 px-5 py-4 border-b border-slate-200 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+                <div>
+                  <h2 className="text-sm font-bold text-slate-800">
+                    นำเข้ารายชื่อแพทย์หลายคนจากไฟล์ Excel / CSV
+                  </h2>
+                  <p className="text-[11px] text-slate-500">
+                    อัปโหลดไฟล์ .CSV หรือก๊อปปี้ตารางจาก Excel มาวางได้ทันที ระบบจะผูกแผนก สายอนุมัติ และโควตาให้อัตโนมัติ
+                  </p>
+                </div>
+              </div>
+              <button onClick={() => setBulkModalOpen(false)} className="text-slate-400 hover:text-slate-600">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4 text-xs">
+              {/* Step 1: Download Template or Upload File */}
+              <div className="bg-emerald-50/70 border border-emerald-200 rounded-xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="space-y-0.5">
+                  <div className="font-bold text-emerald-900">
+                    คอลัมน์ที่รองรับ (เรียงตามลำดับ):
+                  </div>
+                  <div className="text-[11px] text-emerald-800 font-mono">
+                    คำนำหน้า | ชื่อ | นามสกุล | รหัสพนักงาน | เลข ว. | แผนก | สาขาเฉพาะทาง | ประเภท(FT/PT) | เบอร์โทร | วันที่เริ่มงาน
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={handleDownloadTemplateCsv}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white hover:bg-emerald-50 text-emerald-800 border border-emerald-300 font-bold text-[11px] shadow-2xs"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>ดาวน์โหลดไฟล์ตัวอย่าง (.CSV)</span>
+                  </button>
+                  <label className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] shadow-2xs cursor-pointer">
+                    <Upload className="w-3.5 h-3.5" />
+                    <span>เลือกไฟล์ CSV / TXT</span>
+                    <input
+                      type="file"
+                      accept=".csv,.txt"
+                      onChange={handleBulkFileUpload}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
+              </div>
+
+              {/* Paste from Excel Area */}
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  หรือคัดลอกข้อมูลจาก Excel (Ctrl+C) แล้ววาง (Ctrl+V) ในช่องนี้:
+                </label>
+                <textarea
+                  rows={4}
+                  value={bulkRawText}
+                  onChange={(e) => {
+                    setBulkRawText(e.target.value);
+                    parseBulkText(e.target.value);
+                  }}
+                  placeholder={`นพ.,สมชาย,ใจดี,DOC-101,ว. 55112,อายุรกรรม,อายุรกรรมโรคไต,FT,081-111-2222,2024-01-15\nพญ.,สมหญิง,รักงาน,DOC-102,ว. 66223,กุมาร,,FT,089-333-4444,2025-03-01`}
+                  className="w-full p-2.5 rounded-xl border border-slate-300 font-mono text-[11px] focus:ring-2 focus:ring-[#006699]"
+                />
+              </div>
+
+              {/* Preview Table */}
+              {bulkPreviewRows.length > 0 && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-slate-800">
+                      ตัวอย่างข้อมูลที่จะนำเข้า ({bulkPreviewRows.length} รายการ):
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setBulkRawText('');
+                        setBulkPreviewRows([]);
+                      }}
+                      className="text-[11px] text-rose-600 hover:underline font-semibold"
+                    >
+                      ล้างข้อมูล
+                    </button>
+                  </div>
+                  <div className="max-h-52 overflow-y-auto border border-slate-200 rounded-xl">
+                    <table className="w-full text-left text-[11px] border-collapse">
+                      <thead className="bg-slate-50 border-b border-slate-200 sticky top-0 text-slate-600 font-bold">
+                        <tr>
+                          <th className="py-2 px-3">#</th>
+                          <th className="py-2 px-3">ชื่อ-นามสกุล</th>
+                          <th className="py-2 px-3">รหัส</th>
+                          <th className="py-2 px-3">เลข ว.</th>
+                          <th className="py-2 px-3">แผนก / สาขา</th>
+                          <th className="py-2 px-3">ประเภท</th>
+                          <th className="py-2 px-3">เบอร์โทร</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {bulkPreviewRows.map((r, i) => (
+                          <tr key={i} className="hover:bg-slate-50">
+                            <td className="py-1.5 px-3 text-slate-400 font-mono">{i + 1}</td>
+                            <td className="py-1.5 px-3 font-bold text-slate-800">
+                              {r.prefix_th}{r.first_name_th} {r.last_name_th}
+                            </td>
+                            <td className="py-1.5 px-3 font-mono text-slate-600">{r.employee_id || '(อัตโนมัติ)'}</td>
+                            <td className="py-1.5 px-3 font-mono text-emerald-700">{r.license_no || '-'}</td>
+                            <td className="py-1.5 px-3 text-slate-700">
+                              {r.department || r.department_name || 'อายุรกรรม'}
+                              {r.specialty_group ? ` (${r.specialty_group})` : ''}
+                            </td>
+                            <td className="py-1.5 px-3">{r.doctor_type === 'PART_TIME' ? 'PT' : 'FT'}</td>
+                            <td className="py-1.5 px-3 font-mono">{r.phone || '-'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              <div className="pt-3 border-t border-slate-100 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setBulkModalOpen(false)}
+                  className="px-4 py-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 font-semibold"
+                >
+                  ยกเลิก
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmBulkImport}
+                  disabled={bulkPreviewRows.length === 0 || importingBulk}
+                  className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-sm disabled:opacity-50 flex items-center gap-1.5"
+                >
+                  {importingBulk ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>กำลังนำเข้า...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Check className="w-3.5 h-3.5" />
+                      <span>ยืนยันนำเข้าแพทย์ ({bulkPreviewRows.length} ท่าน)</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
