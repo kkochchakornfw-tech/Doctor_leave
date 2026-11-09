@@ -481,7 +481,7 @@ export function buildApproverRequestFlex(request, doctor, leaveType, quotaInfo, 
             action: {
               type: 'uri',
               label: '❌ ระบุเหตุผล / ไม่อนุมัติ',
-              uri: `https://liff.line.me/${process.env.VITE_LIFF_ID || process.env.LIFF_ID || '2011832574-WtcSrDre'}/approver?id=${request.id}&action=reject`
+              uri: `https://liff.line.me/${process.env.VITE_LIFF_ID || process.env.LIFF_ID || '2012494812-wDotvhLS'}/approver?id=${request.id}&action=reject`
             }
           }
         ]
@@ -1046,7 +1046,7 @@ export function buildEmergencyAlertFlex(request, doctor, leaveType, koongPhone) 
             action: {
               type: 'uri',
               label: '🖥️ เปิด Admin Dashboard',
-              uri: `https://liff.line.me/${process.env.VITE_LIFF_ID || process.env.LIFF_ID || '2011832574-WtcSrDre'}/admin`
+              uri: `https://liff.line.me/${process.env.VITE_LIFF_ID || process.env.LIFF_ID || '2012494812-wDotvhLS'}/admin`
             }
           }
         ]
@@ -1426,7 +1426,7 @@ export function buildContactCardFlex(settings = {}) {
             action: {
               type: 'uri',
               label: '🩺 ยื่นใบลาผ่านระบบ (LIFF)',
-              uri: `https://liff.line.me/${process.env.VITE_LIFF_ID || '2011832574-WtcSrDre'}`
+              uri: `https://liff.line.me/${process.env.VITE_LIFF_ID || '2012494812-wDotvhLS'}`
             }
           }
         ]

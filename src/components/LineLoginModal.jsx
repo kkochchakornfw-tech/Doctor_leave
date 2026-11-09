@@ -25,7 +25,7 @@ export default function LineLoginModal({ isOpen, onClose }) {
   const handleRealLiffLogin = async () => {
     try {
       const liff = (await import('@line/liff')).default;
-      const liffId = import.meta.env.VITE_LIFF_ID || '2011832574-WtcSrDre';
+      const liffId = import.meta.env.VITE_LIFF_ID || '2012494812-wDotvhLS';
       if (!liff.isInitialized()) {
         await liff.init({ liffId });
       }

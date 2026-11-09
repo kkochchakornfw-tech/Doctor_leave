@@ -48,7 +48,7 @@ export function buildReminderFlex(request, doc, leaveType, hours) {
           action: {
             type: "uri",
             label: "เปิดศูนย์อนุมัติ",
-            uri: `https://liff.line.me/${process.env.VITE_LIFF_ID || process.env.LIFF_ID || '2011832574-WtcSrDre'}/approver`
+            uri: `https://liff.line.me/${process.env.VITE_LIFF_ID || process.env.LIFF_ID || '2012494812-wDotvhLS'}/approver`
           }
         }
       ]
@@ -60,7 +60,7 @@ export function buildReminderFlex(request, doc, leaveType, hours) {
 // Build Flex for Late Attachment Reminder
 export function buildAttachmentReminderFlex(request, doc, leaveType, status) {
   const isDue = status === 'DUE';
-  const liffId = process.env.VITE_LIFF_ID || process.env.LIFF_ID || '2011832574-WtcSrDre';
+  const liffId = process.env.VITE_LIFF_ID || process.env.LIFF_ID || '2012494812-wDotvhLS';
   const flex = {
     type: "bubble",
     size: "mega",

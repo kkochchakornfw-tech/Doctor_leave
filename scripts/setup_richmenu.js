@@ -19,7 +19,7 @@ const rootDir = path.join(__dirname, '..');
 dotenv.config({ path: path.join(rootDir, '.env') });
 
 const TOKEN = process.env.LINE_CHANNEL_ACCESS_TOKEN;
-const LIFF_ID = process.env.VITE_LIFF_ID || process.env.LIFF_ID || '2011832574-WtcSrDre';
+const LIFF_ID = process.env.VITE_LIFF_ID || process.env.LIFF_ID || '2012494812-wDotvhLS';
 const IMAGE_PATH = path.join(rootDir, 'public', 'richmenu.jpg');
 const CONFIG_PATH = path.join(__dirname, 'line_richmenu.json');
 

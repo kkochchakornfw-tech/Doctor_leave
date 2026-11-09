@@ -39,7 +39,7 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     const initLiff = async () => {
       // Default fallback LIFF ID ensuring it always runs in production/Render even if env variable is unset
-      const liffId = import.meta.env.VITE_LIFF_ID || '2011832574-WtcSrDre';
+      const liffId = import.meta.env.VITE_LIFF_ID || '2012494812-wDotvhLS';
 
       try {
         const liff = (await import('@line/liff')).default;
