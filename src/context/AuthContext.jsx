@@ -55,23 +55,14 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     const initLiff = async () => {
-      const liffId = import.meta.env.VITE_LIFF_ID;
-      
-      // Always load doctors list first
-      await fetchDoctors();
-
-      // If no valid LIFF ID, use Developer Mode (Persona Switcher)
-      if (!liffId || liffId.length < 10) {
-        console.log("No VITE_LIFF_ID found. Using Developer Mode (Persona Switcher).");
-        setIsLiffMode(false);
-        return;
-      }
+      // Default fallback LIFF ID ensuring it always runs in production/Render even if env variable is unset
+      const liffId = import.meta.env.VITE_LIFF_ID || '2011832574-WtcSrDre';
 
       try {
         const liff = (await import('@line/liff')).default;
         await liff.init({ liffId });
         
-        if (liff.isInClient() && liff.isLoggedIn()) {
+        if (liff.isLoggedIn()) {
           setIsLiffMode(true);
           const profile = await liff.getProfile();
           setLiffProfile(profile);
@@ -83,6 +74,7 @@ export function AuthProvider({ children }) {
               setCurrentDoctor(data.doctor);
               setNeedsOnboarding(false);
             } else {
+              // Unregistered doctor LINE account -> Immediately show Onboarding screen!
               setCurrentDoctor(null);
               setNeedsOnboarding(true);
             }
@@ -90,16 +82,16 @@ export function AuthProvider({ children }) {
             setCurrentDoctor(null);
             setNeedsOnboarding(true);
           }
-        } else {
-          console.log("Desktop browser: outside LINE client, using Developer Persona Switcher mode.");
-          setIsLiffMode(false);
+          await fetchDoctors();
+          return;
         }
       } catch (err) {
-        console.error("LIFF Init Error (falling back to developer mode):", err);
-        setIsLiffMode(false);
-      } finally {
-        setLoading(false);
+        console.warn("LIFF Init / Auth Notice:", err);
       }
+
+      // Desktop browser or outside LINE client fallback
+      setIsLiffMode(false);
+      await fetchDoctors();
     };
     
     initLiff();
