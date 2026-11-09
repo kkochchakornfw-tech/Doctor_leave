@@ -194,6 +194,58 @@ router.post('/mock/seed', async (req, res) => {
   }
 });
 
+// Verify doctor by License No. (เลข ว.) or Employee ID for Onboarding
+router.post('/auth/verify-license', (req, res) => {
+  const db = getDb();
+  const input = (req.body.license_no || req.body.employee_id || req.body.query || '').trim();
+  
+  if (!input) {
+    return res.status(400).json({ error: 'กรุณาระบุเลขที่ใบอนุญาตประกอบวิชาชีพเวชกรรม (เลข ว.)' });
+  }
+
+  const cleanDigits = input.replace(/[^0-9]/g, '');
+  const lowerInput = input.toLowerCase();
+
+  // 1. Try matching license digits (e.g. 99999 matches 'ว. 99999')
+  let found = null;
+  if (cleanDigits.length >= 3) {
+    found = db.doctors.find(d => {
+      if (!d.license_no) return false;
+      const docDigits = d.license_no.replace(/[^0-9]/g, '');
+      return docDigits === cleanDigits;
+    });
+  }
+
+  // 2. Fallback: Try matching employee_id (e.g. DOC-TEST, EMP-KOONG, or 6-digit staff ID)
+  if (!found) {
+    found = db.doctors.find(d => d.employee_id && d.employee_id.toLowerCase() === lowerInput);
+  }
+
+  if (!found) {
+    return res.status(404).json({ 
+      error: `ไม่พบข้อมูลแพทย์ที่ตรงกับเลข ว. "${input}" กรุณาตรวจสอบความถูกต้องอีกครั้ง หรือติดต่อฝ่ายการแพทย์` 
+    });
+  }
+
+  const dept = db.departments.find(dept => dept.id === found.department_id);
+
+  res.json({
+    doctor: {
+      id: found.id,
+      employee_id: found.employee_id,
+      license_no: found.license_no,
+      prefix_th: found.prefix_th,
+      first_name_th: found.first_name_th,
+      last_name_th: found.last_name_th,
+      doctor_type: found.doctor_type,
+      department_name: dept?.name_th || 'ไม่ระบุแผนก',
+      is_linked: !!found.line_user_id,
+      line_user_id: found.line_user_id,
+      avatar: found.avatar
+    }
+  });
+});
+
 // Search doctors by name or phone or employeeId or licenseNo for Onboarding
 router.get('/auth/search-doctors', (req, res) => {
   const db = getDb();

@@ -81,9 +81,14 @@ export function AuthProvider({ children }) {
             const data = await res.json();
             if (data.doctor) {
               setCurrentDoctor(data.doctor);
+              setNeedsOnboarding(false);
             } else {
+              setCurrentDoctor(null);
               setNeedsOnboarding(true);
             }
+          } else {
+            setCurrentDoctor(null);
+            setNeedsOnboarding(true);
           }
         } else {
           console.log("Desktop browser: outside LINE client, using Developer Persona Switcher mode.");

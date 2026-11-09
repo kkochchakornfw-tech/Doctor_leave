@@ -1,20 +1,18 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import {
-  UserPlus,
-  AlertTriangle,
-  Search,
-  CheckCircle,
-  UserCheck,
   ShieldCheck,
-  Phone,
+  AlertTriangle,
+  CheckCircle,
   Building,
   Check,
-  ChevronRight,
-  ArrowRight,
+  Search,
   Sparkles,
   HelpCircle,
-  X
+  X,
+  ArrowRight,
+  UserCheck,
+  RotateCcw
 } from 'lucide-react';
 
 export default function OnboardingPage() {
@@ -27,55 +25,62 @@ export default function OnboardingPage() {
     userId: 'U_TEST_DOCTOR_BSI'
   };
 
-  // Search & List state
-  const [searchQuery, setSearchQuery] = useState('');
-  const [doctors, setDoctors] = useState([]);
+  // Input states
+  const [licenseInput, setLicenseInput] = useState('');
+  const [employeeIdInput, setEmployeeIdInput] = useState('');
+  const [mode, setMode] = useState('LICENSE'); // 'LICENSE' or 'EMP_ID'
+  
+  // Verification states
   const [searching, setSearching] = useState(false);
+  const [verifiedDoctor, setVerifiedDoctor] = useState(null);
   
-  // Selected Doctor for confirmation
-  const [selectedDoctor, setSelectedDoctor] = useState(null);
-  const [confirmModalOpen, setConfirmModalOpen] = useState(false);
-  
-  // Manual Employee ID fallback mode
-  const [manualMode, setManualMode] = useState(false);
-  const [employeeId, setEmployeeId] = useState('');
-
-  // Status state
+  // Submit states
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
 
-  // Initial fetch of doctors
-  const fetchDoctors = async (query = '') => {
+  // Search by exact License No. or Employee ID
+  const handleVerify = async (e) => {
+    if (e) e.preventDefault();
+    const query = mode === 'LICENSE' ? licenseInput.trim() : employeeIdInput.trim();
+    if (!query) {
+      setError(mode === 'LICENSE' ? 'กรุณาระบุเลข ว. (เช่น 99999 หรือ 28914)' : 'กรุณาระบุรหัสพนักงาน (เช่น DOC-TEST)');
+      return;
+    }
+
+    setError('');
     setSearching(true);
+    setVerifiedDoctor(null);
+
     try {
-      const res = await fetch(`/api/auth/search-doctors?query=${encodeURIComponent(query)}`);
-      if (res.ok) {
-        const data = await res.json();
-        setDoctors(data.doctors || []);
+      const res = await fetch('/api/auth/verify-license', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          license_no: mode === 'LICENSE' ? query : undefined,
+          employee_id: mode === 'EMP_ID' ? query : undefined
+        })
+      });
+
+      const data = await res.json();
+      if (res.ok && data.doctor) {
+        setVerifiedDoctor(data.doctor);
+        if (data.doctor.is_linked) {
+          setError(`บัญชีของ ${data.doctor.prefix_th}${data.doctor.first_name_th} ${data.doctor.last_name_th} ได้ผูกกับ LINE ไปแล้ว หากต้องการเปลี่ยนบัญชี LINE กรุณาติดต่อฝ่ายการแพทย์`);
+        }
+      } else {
+        setError(data.error || 'ไม่พบข้อมูลแพทย์ในระบบ');
       }
     } catch (err) {
-      console.error(err);
+      setError('ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้ กรุณาลองใหม่อีกครั้ง');
     } finally {
       setSearching(false);
     }
   };
 
-  useEffect(() => {
-    fetchDoctors('');
-  }, []);
-
-  // Debounced search
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      fetchDoctors(searchQuery);
-    }, 250);
-    return () => clearTimeout(timer);
-  }, [searchQuery]);
-
-  // Handle account link submission
+  // Confirm binding LINE with verified doctor
   const handleConfirmLink = async () => {
-    if (!selectedDoctor && !employeeId) return;
+    if (!verifiedDoctor || verifiedDoctor.is_linked) return;
 
     setError('');
     setLoading(true);
@@ -83,8 +88,7 @@ export default function OnboardingPage() {
     try {
       const payload = {
         lineUserId: activeLiffProfile?.userId || 'TEMP_USER_ID',
-        doctorId: selectedDoctor?.id,
-        employeeId: manualMode ? employeeId : undefined,
+        doctorId: verifiedDoctor.id,
         lineDisplayName: activeLiffProfile?.displayName,
         linePictureUrl: activeLiffProfile?.pictureUrl
       };
@@ -106,14 +110,19 @@ export default function OnboardingPage() {
         }, 1200);
       } else {
         setError(data.error || 'เกิดข้อผิดพลาดในการผูกบัญชี');
-        setConfirmModalOpen(false);
       }
     } catch (err) {
       setError('ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้ กรุณาลองใหม่อีกครั้ง');
-      setConfirmModalOpen(false);
     } finally {
       setLoading(false);
     }
+  };
+
+  const resetSearch = () => {
+    setVerifiedDoctor(null);
+    setError('');
+    setLicenseInput('');
+    setEmployeeIdInput('');
   };
 
   return (
@@ -131,10 +140,10 @@ export default function OnboardingPage() {
           />
 
           <h1 className="text-xl font-bold tracking-tight">
-            ลงทะเบียนเข้าใช้งานครั้งแรก
+            ยืนยันตัวตนแพทย์เพื่อผูกบัญชี LINE
           </h1>
           <p className="text-xs text-sky-100 mt-1 font-medium">
-            Doctor Leave @ LINE • โรงพยาบาลกรุงเทพศิริโรจน์
+            Doctor Leave @ LINE • โรงพยาบาลกรุงเทพศิริโรจน์ (BSI)
           </p>
         </div>
 
@@ -142,7 +151,7 @@ export default function OnboardingPage() {
         {activeLiffProfile && (
           <div className="px-6 pt-5">
             <div className="flex items-center gap-3 bg-sky-50/80 p-3 rounded-2xl border border-sky-100">
-              <div className="relative">
+              <div className="relative shrink-0">
                 <img
                   src={activeLiffProfile.pictureUrl || 'https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?w=100'}
                   alt={activeLiffProfile.displayName}
@@ -180,7 +189,7 @@ export default function OnboardingPage() {
             <CheckCircle className="w-5 h-5 shrink-0 text-emerald-600" />
             <div>
               <div className="font-bold text-sm">ผูกบัญชี LINE เรียบร้อยแล้ว!</div>
-              <p className="text-[11px] text-emerald-700 mt-0.5">กำลังนำท่านเข้าสู่ระบบยื่นใบลา...</p>
+              <p className="text-[11px] text-emerald-700 mt-0.5">ยินดีต้อนรับเข้าสู่ระบบ กำลังนำท่านไปยังแบบฟอร์มยื่นใบลา...</p>
             </div>
           </div>
         )}
@@ -189,274 +198,181 @@ export default function OnboardingPage() {
         {!success && (
           <div className="p-6 space-y-4">
             
-            {!manualMode ? (
-              <>
+            {/* Step 1: Input License No. (เลข ว.) */}
+            {!verifiedDoctor ? (
+              <form onSubmit={handleVerify} className="space-y-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center justify-between">
-                    <span>ค้นหาข้อมูลแพทย์ของท่าน:</span>
-                    <span className="text-[10px] font-normal text-slate-400">ค้นหาได้จากชื่อ หรือเบอร์โทรศัพท์</span>
+                    <span>
+                      {mode === 'LICENSE' ? 'ระบุเลขที่ใบประกอบวิชาชีพ (เลข ว.) ของท่าน:' : 'ระบุรหัสพนักงานของท่าน:'}
+                    </span>
+                    <span className="text-[10px] font-normal text-slate-400">
+                      {mode === 'LICENSE' ? 'พิมพ์เฉพาะตัวเลข' : 'เช่น DOC-TEST'}
+                    </span>
                   </label>
 
-                  <div className="relative">
-                    <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                    <input
-                      type="text"
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      placeholder="พิมพ์ชื่อแพทย์, เลข ว. (เช่น 48921) หรือเบอร์โทร..."
-                      className="w-full pl-9 pr-9 py-2.5 bg-slate-50 rounded-xl border border-slate-200 text-xs text-slate-800 focus:bg-white focus:border-[#006699] focus:ring-2 focus:ring-[#006699]/10 outline-none transition-all placeholder:text-slate-400 font-medium"
-                    />
-                    {searchQuery && (
-                      <button
-                        onClick={() => setSearchQuery('')}
-                        className="p-1 text-slate-400 hover:text-slate-600 absolute right-2.5 top-1/2 -translate-y-1/2"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                {/* Doctor Cards List */}
-                <div className="space-y-2 max-h-72 overflow-y-auto pr-0.5">
-                  {searching ? (
-                    <div className="py-8 text-center text-xs text-slate-400">
-                      กำลังค้นหาข้อมูล...
-                    </div>
-                  ) : doctors.length === 0 ? (
-                    <div className="py-8 text-center text-xs text-slate-400 bg-slate-50 rounded-2xl border border-dashed border-slate-200 p-4">
-                      <p>ไม่พบรายชื่อแพทย์ที่ตรงกับคำค้นหา</p>
-                      <button
-                        type="button"
-                        onClick={() => setManualMode(true)}
-                        className="mt-2 text-[#006699] font-bold underline hover:text-sky-700"
-                      >
-                        ต้องการกรอกด้วยรหัสพนักงานแทนหรือไม่?
-                      </button>
+                  {mode === 'LICENSE' ? (
+                    <div className="relative">
+                      <div className="absolute left-3.5 top-1/2 -translate-y-1/2 font-bold text-[#006699] text-sm bg-sky-100 px-2 py-0.5 rounded-md border border-sky-200">
+                        ว.
+                      </div>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        autoFocus
+                        value={licenseInput}
+                        onChange={(e) => setLicenseInput(e.target.value)}
+                        placeholder="เช่น 99999 หรือ 28914"
+                        className="w-full pl-14 pr-4 py-3 bg-slate-50 rounded-2xl border border-slate-300 text-base font-mono font-bold text-slate-900 focus:bg-white focus:border-[#006699] focus:ring-4 focus:ring-sky-100 outline-none transition-all placeholder:text-slate-400 placeholder:font-sans placeholder:font-normal placeholder:text-sm tracking-wide"
+                      />
                     </div>
                   ) : (
-                    doctors.map((doc) => {
-                      const isLinked = doc.is_linked;
-                      return (
-                        <div
-                          key={doc.id}
-                          onClick={() => {
-                            if (isLinked) {
-                              setError(`บัญชีของ ${doc.prefix_th}${doc.first_name_th} ได้ผูกกับ LINE ไปแล้ว หากต้องการเปลี่ยนกรุณาติดต่อฝ่ายการแพทย์`);
-                              return;
-                            }
-                            setError('');
-                            setSelectedDoctor(doc);
-                            setConfirmModalOpen(true);
-                          }}
-                          className={`p-3 rounded-2xl border transition-all flex items-center justify-between gap-3 text-left ${
-                            isLinked
-                              ? 'bg-slate-50/70 border-slate-200 opacity-60 cursor-not-allowed'
-                              : 'bg-white hover:bg-sky-50/40 border-slate-200 hover:border-[#006699] cursor-pointer shadow-xs hover:shadow-md'
-                          }`}
-                        >
-                          <div className="flex items-center gap-3 min-w-0">
-                            <div className="w-10 h-10 rounded-full overflow-hidden bg-slate-100 border border-slate-200 shrink-0">
-                              <img
-                                src={doc.avatar || 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?w=100'}
-                                alt={doc.first_name_th}
-                                className="w-full h-full object-cover"
-                              />
-                            </div>
-                            <div className="min-w-0">
-                              <div className="text-xs font-bold text-slate-800 leading-snug truncate">
-                                {doc.prefix_th}{doc.first_name_th} {doc.last_name_th}
-                              </div>
-                              <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                                <span className="text-[10px] font-semibold text-slate-500 bg-slate-100 px-1.5 py-0.2 rounded">
-                                  {doc.department_name}
-                                </span>
-                                <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded ${
-                                  doc.doctor_type === 'FULL_TIME'
-                                    ? 'bg-sky-50 text-[#006699] border border-sky-100'
-                                    : 'bg-purple-50 text-purple-700 border border-purple-100'
-                                }`}>
-                                  {doc.doctor_type === 'FULL_TIME' ? 'ประจำ (FT)' : 'พาร์ทไทม์ (PT)'}
-                                </span>
-                                {doc.license_no && (
-                                  <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 rounded font-mono">
-                                    {doc.license_no}
-                                  </span>
-                                )}
-                                {doc.phone_masked && doc.phone_masked !== '-' && (
-                                  <span className="text-[10px] text-slate-400 font-mono">
-                                    {doc.phone_masked}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="shrink-0 text-right">
-                            {isLinked ? (
-                              <span className="text-[10px] font-bold text-slate-400 bg-slate-200/70 px-2 py-0.5 rounded-full">
-                                ผูกแล้ว
-                              </span>
-                            ) : (
-                              <div className="w-7 h-7 rounded-full bg-sky-100 text-[#006699] flex items-center justify-center group-hover:bg-[#006699] group-hover:text-white transition-colors">
-                                <ChevronRight className="w-4 h-4" />
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })
+                    <div className="relative">
+                      <input
+                        type="text"
+                        autoFocus
+                        value={employeeIdInput}
+                        onChange={(e) => setEmployeeIdInput(e.target.value)}
+                        placeholder="ระบุรหัสพนักงาน เช่น DOC-TEST หรือ EMP-KOONG"
+                        className="w-full px-4 py-3 bg-slate-50 rounded-2xl border border-slate-300 text-sm font-mono font-bold text-slate-900 focus:bg-white focus:border-[#006699] focus:ring-4 focus:ring-sky-100 outline-none transition-all placeholder:text-slate-400 placeholder:font-sans placeholder:font-normal"
+                      />
+                    </div>
                   )}
+
+                  <p className="text-[11px] text-slate-500 mt-2 leading-relaxed">
+                    🔒 <span className="font-semibold text-slate-700">การรักษาความปลอดภัย:</span> เพื่อป้องกันการแอบอ้างสิทธิ์ ระบบจะแสดงข้อมูลโปรไฟล์แพทย์เฉพาะเมื่อกรอกเลข ว. ถูกต้องสมบูรณ์เท่านั้น
+                  </p>
                 </div>
 
-                <div className="pt-2 text-center border-t border-slate-100">
-                  <button
-                    type="button"
-                    onClick={() => setManualMode(true)}
-                    className="text-xs text-slate-400 hover:text-slate-600 font-medium transition-colors"
-                  >
-                    หรือระบุด้วยรหัสพนักงาน (Employee ID) &rarr;
-                  </button>
-                </div>
-              </>
-            ) : (
-              /* Manual Employee ID Form */
-              <div className="space-y-4">
-                <div className="p-3 bg-sky-50/60 rounded-xl border border-sky-100 text-[11px] text-slate-600 flex items-start gap-2">
-                  <HelpCircle className="w-4 h-4 text-[#006699] shrink-0 mt-0.5" />
-                  <span>
-                    ระบุรหัสพนักงานแพทย์ของท่านที่ขึ้นต้นด้วย <strong>DOC-</strong> หรือ <strong>EMP-</strong>
-                  </span>
-                </div>
+                {/* Submit Search Button */}
+                <button
+                  type="submit"
+                  disabled={searching}
+                  className="w-full py-3 bg-[#006699] hover:bg-[#005580] disabled:bg-slate-300 text-white rounded-2xl font-bold text-xs flex items-center justify-center gap-2 shadow-sm transition-all hover:scale-[1.01] active:scale-[0.99] cursor-pointer"
+                >
+                  {searching ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                      <span>กำลังตรวจสอบข้อมูล...</span>
+                    </>
+                  ) : (
+                    <>
+                      <ShieldCheck className="w-4 h-4" />
+                      <span>ตรวจสอบข้อมูลแพทย์</span>
+                    </>
+                  )}
+                </button>
 
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                    รหัสพนักงาน (Employee ID) <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={employeeId}
-                    onChange={(e) => setEmployeeId(e.target.value.toUpperCase())}
-                    placeholder="เช่น DOC-001"
-                    className="w-full p-3 rounded-xl border border-slate-200 focus:border-[#006699] focus:ring-2 focus:ring-[#006699]/10 outline-none text-sm font-mono uppercase"
-                    disabled={loading}
-                    autoFocus
-                  />
-                </div>
-
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setManualMode(false)}
-                    className="flex-1 py-2.5 px-3 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 transition-colors"
-                  >
-                    กลับไปค้นหาชื่อ
-                  </button>
+                {/* Mode toggle */}
+                <div className="text-center pt-2">
                   <button
                     type="button"
                     onClick={() => {
-                      if (!employeeId.trim()) {
-                        setError('กรุณากรอกรหัสพนักงาน');
-                        return;
-                      }
-                      handleConfirmLink();
+                      setMode(mode === 'LICENSE' ? 'EMP_ID' : 'LICENSE');
+                      setError('');
                     }}
-                    disabled={loading}
-                    className="flex-1 bg-[#006699] hover:bg-[#005580] text-white font-bold py-2.5 px-3 rounded-xl text-xs shadow-sm transition-all disabled:opacity-50"
+                    className="text-xs text-slate-500 hover:text-[#006699] font-medium underline transition-colors"
                   >
-                    {loading ? 'กำลังตรวจสอบ...' : 'ผูกบัญชี LINE'}
+                    {mode === 'LICENSE' 
+                      ? 'ไม่มีเลข ว. หรือเป็นเจ้าหน้าที่ฝ่ายการแพทย์? (คลิกกรอกรหัสพนักงาน)' 
+                      : 'กลับไปกรอกด้วยเลข ว.'}
                   </button>
                 </div>
+              </form>
+            ) : (
+              /* Step 2: Show Verified Doctor Profile Card & Confirm Link */
+              <div className="space-y-4 animate-in fade-in zoom-in-95 duration-200">
+                <div className="p-4 bg-sky-50/60 rounded-2xl border-2 border-sky-200">
+                  <div className="text-[10px] font-bold text-[#006699] uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                    <UserCheck className="w-3.5 h-3.5" />
+                    <span>ข้อมูลแพทย์ที่ตรวจสอบพบในฐานข้อมูล BSI</span>
+                  </div>
+
+                  <div className="flex items-center gap-3.5">
+                    <div className="w-14 h-14 rounded-2xl overflow-hidden bg-slate-200 border border-slate-300 shrink-0 shadow-sm">
+                      <img
+                        src={verifiedDoctor.avatar || 'https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?w=100'}
+                        alt=""
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <h3 className="font-bold text-slate-900 text-sm leading-tight truncate">
+                        {verifiedDoctor.prefix_th}{verifiedDoctor.first_name_th} {verifiedDoctor.last_name_th}
+                      </h3>
+                      <div className="text-xs font-semibold text-[#006699] mt-0.5 flex items-center gap-1.5">
+                        <Building className="w-3.5 h-3.5 shrink-0" />
+                        <span className="truncate">{verifiedDoctor.department_name}</span>
+                      </div>
+                      <div className="text-[11px] text-slate-500 font-mono mt-1 flex items-center gap-2">
+                        {verifiedDoctor.license_no && (
+                          <span className="bg-sky-100 text-[#002d74] px-1.5 py-0.2 rounded font-bold">
+                            {verifiedDoctor.license_no}
+                          </span>
+                        )}
+                        <span>รหัส: {verifiedDoctor.employee_id}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Confirm Action Button */}
+                {!verifiedDoctor.is_linked ? (
+                  <div className="space-y-2">
+                    <button
+                      type="button"
+                      onClick={handleConfirmLink}
+                      disabled={loading}
+                      className="w-full py-3.5 bg-[#06C755] hover:bg-[#05b34c] disabled:bg-slate-300 text-white rounded-2xl font-bold text-sm flex items-center justify-center gap-2 shadow-md transition-all hover:scale-[1.01] active:scale-[0.99] cursor-pointer"
+                    >
+                      {loading ? (
+                        <>
+                          <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                          <span>กำลังผูกบัญชี LINE...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Check className="w-5 h-5 stroke-[2.5]" />
+                          <span>ยืนยันว่านี่คือฉัน และผูกบัญชี LINE</span>
+                        </>
+                      )}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={resetSearch}
+                      disabled={loading}
+                      className="w-full py-2 text-slate-500 hover:text-slate-800 text-xs font-medium flex items-center justify-center gap-1 transition-colors"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      <span>ไม่ใช่ข้อมูลของท่าน? ระบุเลข ว. ใหม่</span>
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={resetSearch}
+                      className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all"
+                    >
+                      ระบุเลข ว. อื่น
+                    </button>
+                  </div>
+                )}
               </div>
             )}
+
+            {/* Help Card */}
+            <div className="pt-2 border-t border-slate-100 text-center">
+              <p className="text-[11px] text-slate-400">
+                หากพบปัญหาในการผูกบัญชี กรุณาติดต่อฝ่ายการแพทย์ โทร. <span className="font-mono font-bold text-slate-600">089-470-9256</span> (พี่กุ้ง)
+              </p>
+            </div>
 
           </div>
         )}
 
-        {/* Security / PDPA Footer */}
-        <div className="bg-slate-50/80 px-6 py-3 border-t border-slate-100 flex items-center justify-center gap-1.5 text-[10px] text-slate-400">
-          <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-          <span>ระบบปลอดภัยตามมาตรฐาน PDPA • ข้อมูลส่งตรงเฉพาะบุคคล 1-on-1</span>
-        </div>
-
       </div>
-
-      {/* Confirmation Modal */}
-      {confirmModalOpen && selectedDoctor && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl border border-slate-100 text-center animate-in zoom-in-95 duration-150">
-            <div className="w-14 h-14 bg-sky-100 text-[#006699] rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-inner">
-              <UserCheck className="w-7 h-7" />
-            </div>
-
-            <h3 className="text-base font-bold text-slate-800">
-              ยืนยันการผูกบัญชีแพทย์
-            </h3>
-            <p className="text-xs text-slate-500 mt-1 mb-4">
-              กรุณาตรวจสอบข้อมูลของท่านให้ถูกต้องก่อนกดยืนยัน
-            </p>
-
-            {/* Doctor Confirmation Box */}
-            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 text-left space-y-2 mb-4">
-              <div className="flex items-center gap-3">
-                <img
-                  src={selectedDoctor.avatar || 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?w=100'}
-                  alt={selectedDoctor.first_name_th}
-                  className="w-12 h-12 rounded-full object-cover border border-slate-200"
-                />
-                <div>
-                  <div className="font-bold text-sm text-slate-800">
-                    {selectedDoctor.prefix_th}{selectedDoctor.first_name_th} {selectedDoctor.last_name_th}
-                  </div>
-                  <div className="text-xs text-slate-500 mt-0.5">
-                    แผนก: <strong>{selectedDoctor.department_name}</strong>
-                  </div>
-                  <div className="text-[10px] text-[#006699] font-semibold mt-0.5 font-mono">
-                    รหัส: {selectedDoctor.employee_id} {selectedDoctor.license_no ? `• ${selectedDoctor.license_no}` : ''}
-                  </div>
-                </div>
-              </div>
-
-              {liffProfile && (
-                <div className="pt-2 border-t border-slate-200/80 flex items-center justify-between text-[11px] text-slate-600">
-                  <span>บัญชี LINE:</span>
-                  <span className="font-bold text-slate-800 flex items-center gap-1">
-                    <img src={liffProfile.pictureUrl} alt="" className="w-4 h-4 rounded-full" />
-                    <span>{liffProfile.displayName}</span>
-                  </span>
-                </div>
-              )}
-            </div>
-
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => setConfirmModalOpen(false)}
-                className="flex-1 py-2.5 px-3 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors"
-                disabled={loading}
-              >
-                ยกเลิก
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirmLink}
-                disabled={loading}
-                className="flex-1 bg-[#006699] hover:bg-[#005580] text-white font-bold py-2.5 px-3 rounded-xl text-xs shadow-sm transition-all flex items-center justify-center gap-1.5"
-              >
-                {loading ? (
-                  <span>กำลังผูกบัญชี...</span>
-                ) : (
-                  <>
-                    <Check className="w-4 h-4" />
-                    <span>ใช่ ฉันคือท่านนี้</span>
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
     </div>
   );
 }
