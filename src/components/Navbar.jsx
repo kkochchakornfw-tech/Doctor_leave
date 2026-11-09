@@ -19,14 +19,15 @@ import {
   UserCheck,
   ShieldCheck,
   Check,
-  QrCode
+  QrCode,
+  LogOut
 } from 'lucide-react';
 import LineSimulatorModal from './LineSimulatorModal';
 import LineLoginModal from './LineLoginModal';
 
 export default function Navbar() {
   const location = useLocation();
-  const { currentDoctor, switchDoctorByEmpId } = useAuth();
+  const { currentDoctor, switchDoctorByEmpId, logout } = useAuth();
   const [isSimulatorOpen, setIsSimulatorOpen] = useState(false);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -496,6 +497,20 @@ export default function Navbar() {
                             {currentDoctor.employee_id === 'EMP-KOONG' && (
                               <Check className="w-4 h-4 text-amber-600 shrink-0" />
                             )}
+                          </button>
+                        </div>
+
+                        {/* Logout action */}
+                        <div className="pt-2 mt-2 border-t border-slate-100">
+                          <button
+                            onClick={() => {
+                              setProfileDropdownOpen(false);
+                              logout();
+                            }}
+                            className="w-full py-2 px-3 bg-slate-50 hover:bg-rose-50 hover:text-rose-700 text-slate-600 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer border border-slate-200"
+                          >
+                            <LogOut className="w-3.5 h-3.5" />
+                            <span>ออกจากระบบ (Log Out)</span>
                           </button>
                         </div>
                       </div>

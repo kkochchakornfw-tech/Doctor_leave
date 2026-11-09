@@ -226,3 +226,4 @@ export default function LineLoginModal({ isOpen, onClose }) {
     </div>
   );
 }
+

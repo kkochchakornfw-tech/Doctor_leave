@@ -12,11 +12,14 @@ import {
   X,
   ArrowRight,
   UserCheck,
-  RotateCcw
+  RotateCcw,
+  QrCode
 } from 'lucide-react';
+import LineLoginModal from '../components/LineLoginModal';
 
 export default function OnboardingPage() {
   const { liffProfile, setNeedsOnboarding, setCurrentDoctor } = useAuth();
+  const [showQrModal, setShowQrModal] = useState(false);
   
   // Fallback for desktop testing / direct URL access
   const activeLiffProfile = liffProfile || {
@@ -362,8 +365,17 @@ export default function OnboardingPage() {
               </div>
             )}
 
-            {/* Help Card */}
-            <div className="pt-2 border-t border-slate-100 text-center">
+            {/* Help Card & Admin QR Scan Access */}
+            <div className="pt-3 border-t border-slate-100 text-center space-y-3">
+              <button
+                type="button"
+                onClick={() => setShowQrModal(true)}
+                className="w-full py-2.5 px-3 rounded-2xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-xs"
+              >
+                <QrCode className="w-4 h-4 text-[#06C755]" />
+                <span>เจ้าหน้าที่แอดมิน / ฝ่ายการแพทย์ สแกน QR Code เข้าสู่ระบบ</span>
+              </button>
+
               <p className="text-[11px] text-slate-400">
                 หากพบปัญหาในการผูกบัญชี กรุณาติดต่อฝ่ายการแพทย์ โทร. <span className="font-mono font-bold text-slate-600">089-470-9256</span> (พี่กุ้ง)
               </p>
@@ -373,6 +385,12 @@ export default function OnboardingPage() {
         )}
 
       </div>
+
+      {/* LINE QR Code Login Modal */}
+      <LineLoginModal
+        isOpen={showQrModal}
+        onClose={() => setShowQrModal(false)}
+      />
     </div>
   );
 }

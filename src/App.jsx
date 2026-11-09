@@ -74,9 +74,9 @@ export default function App() {
 }
 
 function AppContent() {
-  const { needsOnboarding, loading } = useAuth();
+  const { currentDoctor, needsOnboarding, loading } = useAuth();
 
-  // Show loading spinner while LIFF initializes and authenticates with LINE
+  // Show loading spinner while initializing and authenticating with LINE
   if (loading) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 gap-3">
@@ -86,7 +86,8 @@ function AppContent() {
     );
   }
 
-  if (needsOnboarding) {
+  // If not logged in yet or needs onboarding -> ALWAYS SHOW OnboardingPage FIRST!
+  if (!currentDoctor || needsOnboarding) {
     return <OnboardingPage />;
   }
 
