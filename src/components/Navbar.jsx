@@ -364,6 +364,35 @@ export default function Navbar() {
                             </span>
                           )}
                         </div>
+
+                        {/* Onboarding / Unlink Test Button */}
+                        <div className="mt-2">
+                          {currentDoctor.line_user_id ? (
+                            <button
+                              onClick={async () => {
+                                try {
+                                  await fetch(`/api/doctors/${currentDoctor.id}/unlink-line`, { method: 'POST' });
+                                } catch (e) {
+                                  console.error(e);
+                                }
+                                window.location.href = '/onboarding';
+                              }}
+                              className="w-full text-center py-1.5 px-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-[11px] font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                              title="ปลด LINE ออกจากบัญชีนี้ เพื่อทดสอบขั้นตอน Onboarding สมัครเข้าใช้งานใหม่"
+                            >
+                              <span>🔓 ปลด LINE เพื่อทดสอบ Onboarding</span>
+                            </button>
+                          ) : (
+                            <Link
+                              to="/onboarding"
+                              onClick={() => setProfileDropdownOpen(false)}
+                              className="w-full text-center py-1.5 px-2 bg-sky-50 hover:bg-sky-100 text-[#006699] border border-sky-200 rounded-xl text-[11px] font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                              title="เปิดหน้าจอ Onboarding ยืนยันตัวตนเพื่อผูก LINE บัญชีแพทย์"
+                            >
+                              <span>🔗 ไปหน้า Onboarding ผูก LINE</span>
+                            </Link>
+                          )}
+                        </div>
                       </div>
 
                       {/* Quick Role / Persona Switcher */}

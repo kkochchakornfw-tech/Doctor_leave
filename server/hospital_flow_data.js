@@ -340,7 +340,7 @@ function buildMasterHospitalData() {
     employee_id: 'DOC-TEST',
     doctor_code: 'TEST01',
     license_no: 'ว. 99999',
-    line_user_id: 'U_TEST_DOCTOR_BSI',
+    line_user_id: null, // Unbound: Ready to test onboarding
     prefix_th: 'นพ.',
     first_name_th: 'ทดสอบ',
     last_name_th: 'ระบบแพทย์',

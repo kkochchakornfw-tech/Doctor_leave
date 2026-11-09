@@ -133,6 +133,7 @@ function AppContent() {
                   <AdminShiftsPage />
                 </ProtectedRoute>
               } />
+              <Route path="/onboarding" element={<OnboardingPage />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </main>

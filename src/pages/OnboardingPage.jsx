@@ -20,6 +20,13 @@ import {
 export default function OnboardingPage() {
   const { liffProfile, setNeedsOnboarding, setCurrentDoctor } = useAuth();
   
+  // Fallback for desktop testing / direct URL access
+  const activeLiffProfile = liffProfile || {
+    displayName: 'นพ.ทดสอบ (LINE Test User)',
+    pictureUrl: 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?w=120',
+    userId: 'U_TEST_DOCTOR_BSI'
+  };
+
   // Search & List state
   const [searchQuery, setSearchQuery] = useState('');
   const [doctors, setDoctors] = useState([]);
@@ -75,11 +82,11 @@ export default function OnboardingPage() {
 
     try {
       const payload = {
-        lineUserId: liffProfile?.userId || 'TEMP_USER_ID',
+        lineUserId: activeLiffProfile?.userId || 'TEMP_USER_ID',
         doctorId: selectedDoctor?.id,
         employeeId: manualMode ? employeeId : undefined,
-        lineDisplayName: liffProfile?.displayName,
-        linePictureUrl: liffProfile?.pictureUrl
+        lineDisplayName: activeLiffProfile?.displayName,
+        linePictureUrl: activeLiffProfile?.pictureUrl
       };
 
       const res = await fetch('/api/auth/link', {
@@ -93,8 +100,9 @@ export default function OnboardingPage() {
       if (res.ok && data.success) {
         setSuccess(true);
         setTimeout(() => {
-          setCurrentDoctor(data.doctor);
-          setNeedsOnboarding(false);
+          if (setCurrentDoctor) setCurrentDoctor(data.doctor);
+          if (setNeedsOnboarding) setNeedsOnboarding(false);
+          window.location.href = '/';
         }, 1200);
       } else {
         setError(data.error || 'เกิดข้อผิดพลาดในการผูกบัญชี');
@@ -131,13 +139,13 @@ export default function OnboardingPage() {
         </div>
 
         {/* LINE Identity Card */}
-        {liffProfile && (
+        {activeLiffProfile && (
           <div className="px-6 pt-5">
             <div className="flex items-center gap-3 bg-sky-50/80 p-3 rounded-2xl border border-sky-100">
               <div className="relative">
                 <img
-                  src={liffProfile.pictureUrl || 'https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?w=100'}
-                  alt={liffProfile.displayName}
+                  src={activeLiffProfile.pictureUrl || 'https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?w=100'}
+                  alt={activeLiffProfile.displayName}
                   className="w-11 h-11 rounded-full object-cover border-2 border-white shadow-xs"
                 />
                 <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-emerald-500 border-2 border-white rounded-full"></span>
@@ -147,7 +155,7 @@ export default function OnboardingPage() {
                   บัญชี LINE ของท่าน
                 </div>
                 <div className="text-sm font-bold text-slate-800 truncate">
-                  {liffProfile.displayName}
+                  {activeLiffProfile.displayName}
                 </div>
               </div>
               <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded-full flex items-center gap-1 shrink-0">
