@@ -74,7 +74,17 @@ export default function App() {
 }
 
 function AppContent() {
-  const { needsOnboarding } = useAuth();
+  const { needsOnboarding, loading } = useAuth();
+
+  // Show loading spinner while LIFF initializes and authenticates with LINE
+  if (loading) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 gap-3">
+        <div className="w-9 h-9 border-3 border-[#006699] border-t-transparent rounded-full animate-spin"></div>
+        <p className="text-xs font-semibold text-slate-500">กำลังเชื่อมต่อระบบ Doctor Leave @ LINE...</p>
+      </div>
+    );
+  }
 
   if (needsOnboarding) {
     return <OnboardingPage />;
