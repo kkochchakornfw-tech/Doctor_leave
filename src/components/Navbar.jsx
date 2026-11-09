@@ -18,14 +18,17 @@ import {
   Settings2,
   UserCheck,
   ShieldCheck,
-  Check
+  Check,
+  QrCode
 } from 'lucide-react';
 import LineSimulatorModal from './LineSimulatorModal';
+import LineLoginModal from './LineLoginModal';
 
 export default function Navbar() {
   const location = useLocation();
   const { currentDoctor, switchDoctorByEmpId } = useAuth();
   const [isSimulatorOpen, setIsSimulatorOpen] = useState(false);
+  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [masterDataOpen, setMasterDataOpen] = useState(false);
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
@@ -269,6 +272,16 @@ export default function Navbar() {
             {/* Right Actions: LINE Simulator Button & Active Profile Dropdown */}
             <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
               
+              {/* LINE QR Code Login Button for Admins on PC */}
+              <button
+                onClick={() => setIsLoginModalOpen(true)}
+                className="hidden lg:inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-bold shadow-xs transition-all hover:scale-102 active:scale-98 whitespace-nowrap shrink-0 cursor-pointer"
+                title="เข้าสู่ระบบด้วย LINE (สแกน QR Code บนมือถือ)"
+              >
+                <QrCode className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                <span className="whitespace-nowrap">เข้าสู่ระบบด้วย LINE</span>
+              </button>
+
               {/* LINE Simulator Button */}
               <button
                 onClick={() => setIsSimulatorOpen(true)}
@@ -395,8 +408,22 @@ export default function Navbar() {
                         </div>
                       </div>
 
-                      {/* Quick Role / Persona Switcher */}
+                      {/* LINE Scan QR Code Login Button */}
                       <div className="px-3 pt-2.5">
+                        <button
+                          onClick={() => {
+                            setProfileDropdownOpen(false);
+                            setIsLoginModalOpen(true);
+                          }}
+                          className="w-full py-2 px-3 bg-gradient-to-r from-emerald-600 to-[#06C755] hover:from-emerald-700 hover:to-[#05b34c] text-white rounded-xl text-xs font-bold shadow-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
+                        >
+                          <QrCode className="w-4 h-4" />
+                          <span>สแกน QR Code เข้าสู่ระบบด้วย LINE</span>
+                        </button>
+                      </div>
+
+                      {/* Quick Role / Persona Switcher */}
+                      <div className="px-3 pt-2">
                         <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-2 mb-1.5">
                           สลับบัญชีทดสอบ (Quick Switch)
                         </div>
@@ -643,6 +670,12 @@ export default function Navbar() {
       <LineSimulatorModal
         isOpen={isSimulatorOpen}
         onClose={() => setIsSimulatorOpen(false)}
+      />
+
+      {/* LINE Login Modal */}
+      <LineLoginModal
+        isOpen={isLoginModalOpen}
+        onClose={() => setIsLoginModalOpen(false)}
       />
     </>
   );
