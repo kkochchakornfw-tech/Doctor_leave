@@ -12,6 +12,7 @@ import {
   X,
   Award,
   GitMerge,
+  Sliders,
   CalendarRange,
   ChevronDown,
   Settings2,
@@ -75,6 +76,7 @@ export default function Navbar() {
   // Master Data Dropdown items
   const masterDataItems = [
     { to: '/admin/master-data', label: 'สายอนุมัติแผนก & รายชื่อแพทย์', desc: 'ตั้งค่าสายอนุมัติรายแผนก, ตรวจสอบรายชื่อแพทย์', icon: GitMerge },
+    { to: '/admin/criteria', label: 'เกณฑ์โควตาแผนก (Quota)', desc: 'กำหนดจำนวนแพทย์ขั้นต่ำที่ต้องปฏิบัติงาน / ลาได้พร้อมกัน', icon: Sliders },
     { to: '/admin/tenure', label: 'เกณฑ์ลาพักร้อน 20 วัน & อายุงาน', desc: 'หลังครบ 6 เดือน (FT) • คำนวณตามปฏิทิน', icon: Award },
   ];
 
@@ -574,6 +576,15 @@ export default function Navbar() {
                 >
                   <GitMerge className="w-4 h-4 text-purple-600" />
                   <span>สายอนุมัติแผนก &amp; รายชื่อแพทย์</span>
+                </Link>
+
+                <Link
+                  to="/admin/criteria"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-100"
+                >
+                  <Sliders className="w-4 h-4 text-purple-600" />
+                  <span>เกณฑ์โควตาแผนก (Quota)</span>
                 </Link>
 
                 <Link
