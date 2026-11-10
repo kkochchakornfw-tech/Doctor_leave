@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { QRCodeSVG } from 'qrcode.react';
 import {
   QrCode,
   Smartphone,
@@ -102,56 +103,27 @@ export default function LineLoginModal({ isOpen, onClose }) {
             <>
               {/* QR Code Frame */}
               <div className="relative inline-block p-4 bg-white rounded-3xl border-2 border-dashed border-sky-300 shadow-inner group">
-                <div className="w-48 h-48 bg-slate-50 rounded-2xl flex flex-col items-center justify-center relative overflow-hidden border border-slate-200">
+                <div className="w-48 h-48 bg-white rounded-2xl flex flex-col items-center justify-center relative overflow-hidden border border-slate-200 p-2">
                   {scanning ? (
                     <div className="flex flex-col items-center gap-2">
                       <div className="w-8 h-8 border-3 border-[#06C755] border-t-transparent rounded-full animate-spin"></div>
                       <span className="text-xs font-bold text-slate-600">กำลังตรวจสอบสิทธิ์...</span>
                     </div>
                   ) : (
-                    <>
-                      {/* Realistic Visual QR Code Generator SVG */}
-                      <svg viewBox="0 0 100 100" className="w-40 h-40 object-contain text-slate-800">
-                        {/* Position Markers */}
-                        <rect x="5" y="5" width="25" height="25" rx="4" fill="currentColor" />
-                        <rect x="9" y="9" width="17" height="17" rx="2" fill="white" />
-                        <rect x="13" y="13" width="9" height="9" fill="currentColor" />
-
-                        <rect x="70" y="5" width="25" height="25" rx="4" fill="currentColor" />
-                        <rect x="74" y="9" width="17" height="17" rx="2" fill="white" />
-                        <rect x="78" y="13" width="9" height="9" fill="currentColor" />
-
-                        <rect x="5" y="70" width="25" height="25" rx="4" fill="currentColor" />
-                        <rect x="9" y="74" width="17" height="17" rx="2" fill="white" />
-                        <rect x="13" y="78" width="9" height="9" fill="currentColor" />
-
-                        {/* Data Matrix Dots */}
-                        <circle cx="45" cy="15" r="3" fill="currentColor" />
-                        <circle cx="55" cy="15" r="3" fill="currentColor" />
-                        <circle cx="40" cy="25" r="3" fill="currentColor" />
-                        <circle cx="60" cy="25" r="3" fill="currentColor" />
-                        
-                        <circle cx="15" cy="45" r="3" fill="currentColor" />
-                        <circle cx="25" cy="40" r="3" fill="currentColor" />
-                        <circle cx="25" cy="60" r="3" fill="currentColor" />
-
-                        <circle cx="75" cy="45" r="3" fill="currentColor" />
-                        <circle cx="85" cy="55" r="3" fill="currentColor" />
-                        <circle cx="75" cy="65" r="3" fill="currentColor" />
-
-                        <circle cx="45" cy="75" r="3" fill="currentColor" />
-                        <circle cx="55" cy="85" r="3" fill="currentColor" />
-                        <circle cx="65" cy="75" r="3" fill="currentColor" />
-
-                        {/* Center BSI Badge */}
-                        <circle cx="50" cy="50" r="14" fill="#002d74" />
-                        <circle cx="50" cy="50" r="12" fill="white" />
-                        <path d="M47 44 h6 v12 h-6 z M44 47 h12 v6 h-12 z" fill="#006699" />
-                      </svg>
-
-                      {/* Scan Line Animation */}
-                      <div className="absolute inset-x-0 h-1 bg-gradient-to-r from-transparent via-[#06C755] to-transparent animate-pulse"></div>
-                    </>
+                    <div className="relative flex items-center justify-center">
+                      <QRCodeSVG
+                        value={`https://liff.line.me/${import.meta.env.VITE_LIFF_ID || '2012494812-wDotvhLS'}`}
+                        size={160}
+                        level="M"
+                        includeMargin={false}
+                      />
+                      {/* Center BSI Hospital Cross Badge */}
+                      <div className="absolute w-8 h-8 bg-white rounded-full shadow-md border border-slate-200 flex items-center justify-center pointer-events-none">
+                        <div className="w-5 h-5 bg-[#006699] rounded-full flex items-center justify-center text-white font-bold text-[10px]">
+                          +
+                        </div>
+                      </div>
+                    </div>
                   )}
                 </div>
               </div>
@@ -160,19 +132,19 @@ export default function LineLoginModal({ isOpen, onClose }) {
               <div className="text-left bg-slate-50 p-3.5 rounded-2xl border border-slate-200 space-y-1.5 text-xs text-slate-600">
                 <div className="font-bold text-slate-800 flex items-center gap-1.5 mb-1 text-[11px] uppercase tracking-wide">
                   <Smartphone className="w-3.5 h-3.5 text-[#06C755]" />
-                  <span>ขั้นตอนการเข้าสู่ระบบ:</span>
+                  <span>วิธีเปิดระบบ / สแกนใช้งาน:</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="w-4 h-4 rounded-full bg-slate-200 text-slate-700 font-bold flex items-center justify-center text-[10px] shrink-0">1</span>
-                  <span>เปิดแอป LINE ในมือถือของคุณหมอหรือแอดมิน</span>
+                  <span>เอามือถือเปิดกล้องหรือแอป LINE แตะสแกน <strong>QR Code</strong> ด้านบนนี้</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="w-4 h-4 rounded-full bg-slate-200 text-slate-700 font-bold flex items-center justify-center text-[10px] shrink-0">2</span>
-                  <span>แตะที่ไอคอนสแกน <strong>QR Code</strong> ในช่องค้นหาของ LINE</span>
+                  <span>มือถือจะเปิดเข้าระบบ <strong>Doctor Leave @ LINE (BSI)</strong> ทันที</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="w-4 h-4 rounded-full bg-slate-200 text-slate-700 font-bold flex items-center justify-center text-[10px] shrink-0">3</span>
-                  <span>สแกน QR Code บนหน้านี้เพื่อยืนยันตัวตนอัตโนมัติ</span>
+                  <span className="w-4 h-4 rounded-full bg-slate-200 text-slate-700 font-bold flex items-center justify-center text-[10px] shrink-0">💻</span>
+                  <span>หรือกดปุ่มเขียวด้านล่าง เพื่อล็อกอินแอดมินบนจอคอมนี้</span>
                 </div>
               </div>
 
