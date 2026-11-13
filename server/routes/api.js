@@ -2090,7 +2090,12 @@ router.post('/leave-requests/:id/cancel', async (req, res) => {
     
     // Check permission: doctor himself or Admin
     const actorDoc = db.doctors.find(d => d.id === doctor_id);
-    const isAdmin = actorDoc?.roles?.includes('ADMIN') || actorDoc?.roles?.includes('MEDICAL_ADMIN');
+    const actorRoles = (db.doctor_roles || []).filter(r => r.doctor_id === doctor_id).map(r => r.role);
+    const isAdmin =
+      actorRoles.includes('ADMIN') ||
+      actorRoles.includes('MEDICAL_ADMIN') ||
+      actorDoc?.roles?.includes('ADMIN') ||
+      actorDoc?.roles?.includes('MEDICAL_ADMIN');
     if (request.doctor_id !== doctor_id && !isAdmin) {
       return res.status(403).json({ error: 'คุณไม่มีสิทธิ์ยกเลิกคำขอนี้' });
     }

@@ -27,7 +27,7 @@ import { Link } from 'react-router-dom';
 import CalendarView from '../components/CalendarView';
 
 export default function AdminDashboardPage() {
-  const { doctors } = useAuth();
+  const { doctors, currentDoctor } = useAuth();
 
   const [stats, setStats] = useState(null);
   const [requests, setRequests] = useState([]);
@@ -44,6 +44,9 @@ export default function AdminDashboardPage() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [overrideModalReq, setOverrideModalReq] = useState(null);
   const [overrideReason, setOverrideReason] = useState('อนุมัติแทนกรณีเร่งด่วน / หัวหน้าแผนกติดผ่าตัด');
+  const [cancelModalReq, setCancelModalReq] = useState(null);
+  const [cancelReason, setCancelReason] = useState('ฝ่ายการแพทย์ยกเลิกใบลาแทนแพทย์');
+  const [cancelling, setCancelling] = useState(false);
 
   // Form state for creating on behalf
   const todayStr = new Date().toISOString().split('T')[0];
@@ -180,6 +183,33 @@ export default function AdminDashboardPage() {
       console.error(err);
     } finally {
       setFormSubmitting(false);
+    }
+  };
+
+  const handleAdminCancelRequest = async () => {
+    if (!cancelModalReq) return;
+    setCancelling(true);
+    try {
+      const res = await fetch(`/api/leave-requests/${cancelModalReq.id}/cancel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          doctor_id: currentDoctor?.id,
+          reason: cancelReason
+        })
+      });
+      if (res.ok) {
+        setCancelModalReq(null);
+        fetchDashboardData();
+      } else {
+        const data = await res.json();
+        alert(data.error || 'ไม่สามารถยกเลิกใบลาได้');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้');
+    } finally {
+      setCancelling(false);
     }
   };
 
@@ -544,17 +574,31 @@ export default function AdminDashboardPage() {
                         </span>
                       </td>
                       <td className="py-3 px-4 text-right">
-                        {isPending ? (
-                          <button
-                            onClick={() => setOverrideModalReq(req)}
-                            className="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-bold transition-all shadow-2xs"
-                            title="อนุมัติแทนกรณีฉุกเฉินหรือหัวหน้าแผนกไม่อยู่"
-                          >
-                            ⚡ Override อนุมัติแทน
-                          </button>
-                        ) : (
-                          <span className="text-[11px] text-slate-400">เสร็จสิ้น</span>
-                        )}
+                        <div className="flex items-center justify-end gap-1.5">
+                          {isPending && (
+                            <button
+                              onClick={() => setOverrideModalReq(req)}
+                              className="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-bold transition-all shadow-2xs"
+                              title="อนุมัติแทนกรณีฉุกเฉินหรือหัวหน้าแผนกไม่อยู่"
+                            >
+                              ⚡ Override อนุมัติแทน
+                            </button>
+                          )}
+                          {(req.status === 'PENDING' || req.status === 'APPROVED') ? (
+                            <button
+                              onClick={() => {
+                                setCancelReason('ฝ่ายการแพทย์ยกเลิกใบลาแทนแพทย์');
+                                setCancelModalReq(req);
+                              }}
+                              className="px-2.5 py-1 border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg text-xs font-bold transition-all"
+                              title="ยกเลิกใบลาแทนแพทย์ (คืนโควตาและคืนตารางเวร)"
+                            >
+                              ยกเลิกใบลา
+                            </button>
+                          ) : (
+                            !isPending && <span className="text-[11px] text-slate-400">เสร็จสิ้น</span>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
@@ -723,6 +767,63 @@ export default function AdminDashboardPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Admin Cancel Leave Request Modal */}
+      {cancelModalReq && (
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
+                <XCircle className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-900">ยกเลิกใบลาแทนแพทย์</h3>
+                <p className="text-xs text-slate-500">
+                  {cancelModalReq.request_no} • {cancelModalReq.doctor?.name}
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-800 space-y-1">
+              <div><strong>ประเภท:</strong> {cancelModalReq.leave_type?.name_th}</div>
+              <div><strong>วันที่ลา:</strong> {cancelModalReq.start_date} ({cancelModalReq.duration_days} วัน)</div>
+              <div className="text-[11px] text-rose-700 pt-1">
+                เมื่อยกเลิกแล้ว ระบบจะคืนโควตาวันลา และคืนสถานะตารางเวรของแพทย์ท่านนี้ให้อัตโนมัติ
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">เหตุผลการยกเลิก</label>
+              <input
+                type="text"
+                value={cancelReason}
+                onChange={(e) => setCancelReason(e.target.value)}
+                className="w-full p-2.5 rounded-xl border border-slate-200 text-xs bg-slate-50"
+                placeholder="ระบุเหตุผลที่ฝ่ายการแพทย์ยกเลิกใบลา..."
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setCancelModalReq(null)}
+                disabled={cancelling}
+                className="px-4 py-2 border border-slate-200 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-50"
+              >
+                ปิด
+              </button>
+              <button
+                type="button"
+                onClick={handleAdminCancelRequest}
+                disabled={cancelling}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold shadow-sm disabled:opacity-60"
+              >
+                {cancelling ? 'กำลังยกเลิก...' : 'ยืนยันยกเลิกใบลา'}
+              </button>
+            </div>
           </div>
         </div>
       )}
