@@ -36,6 +36,8 @@ export default function OnboardingPage() {
   const [linkedDoctor, setLinkedDoctor] = useState(null);
   const [checkedLinked, setCheckedLinked] = useState(!liffProfile);
   const [showFirstTime, setShowFirstTime] = useState(false);
+  const [showNotLinkedModal, setShowNotLinkedModal] = useState(false);
+  const LOGIN_ATTEMPT_KEY = 'bsi_login_attempt';
 
   // Input states
   const [licenseInput, setLicenseInput] = useState('');
@@ -162,9 +164,13 @@ export default function OnboardingPage() {
           try { localStorage.removeItem(PENDING_KEY); } catch { /* ignore */ }
         } else {
           const pending = readFlag(PENDING_KEY);
+          const attempted = readFlag(LOGIN_ATTEMPT_KEY);
+          try { localStorage.removeItem(LOGIN_ATTEMPT_KEY); } catch { /* ignore */ }
           if (pending) {
             try { localStorage.removeItem(PENDING_KEY); } catch { /* ignore */ }
             await linkDoctor(pending);
+          } else if (attempted) {
+            setShowNotLinkedModal(true);
           }
         }
       } catch { /* show the normal form */ }
@@ -186,12 +192,33 @@ export default function OnboardingPage() {
     setNeedsOnboarding(false);
   };
 
-  // Returning doctor without an active LINE session: sign in with LINE
+  // "Already linked?" -> sign in with LINE; tell the user if this LINE account was never linked
   const handleLineLogin = async () => {
     setError('');
     setLoading(true);
     try {
-      await redirectToLineLogin();
+      const liff = (await import('@line/liff')).default;
+      const liffId = import.meta.env.VITE_LIFF_ID || '2012494812-wDotvhLS';
+      if (!liff.id) await liff.init({ liffId });
+      if (liff.isLoggedIn()) {
+        const profile = await liff.getProfile();
+        const res = await fetch(`/api/auth/me?lineUserId=${encodeURIComponent(profile.userId)}`);
+        const data = res.ok ? await res.json() : {};
+        if (data.doctor) {
+          try {
+            localStorage.setItem('bsi_returning_user', '1');
+            localStorage.setItem('bsi_active_doctor_id', data.doctor.id);
+          } catch { /* ignore */ }
+          setCurrentDoctor(data.doctor);
+          setNeedsOnboarding(false);
+        } else {
+          setShowNotLinkedModal(true);
+          setLoading(false);
+        }
+        return;
+      }
+      try { localStorage.setItem(LOGIN_ATTEMPT_KEY, '1'); } catch { /* ignore */ }
+      liff.login({ redirectUri: `${window.location.origin}/` });
     } catch (err) {
       setError(`เข้าสู่ระบบด้วย LINE ไม่สำเร็จ: ${err?.message || 'กรุณาลองใหม่'}`);
       setLoading(false);
@@ -207,6 +234,39 @@ export default function OnboardingPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-100 via-sky-50/50 to-slate-200 py-6 px-4 flex flex-col items-center justify-center">
+      {showNotLinkedModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm px-4">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-sm w-full p-6 text-center space-y-4">
+            <div className="mx-auto w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center">
+              <AlertTriangle className="w-6 h-6 text-amber-600" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-slate-900">ยังไม่พบการผูกบัญชี</h3>
+              <p className="text-xs text-slate-600 mt-2 leading-relaxed">
+                บัญชี LINE{activeLiffProfile?.displayName ? ` “${activeLiffProfile.displayName}”` : ''} ยังไม่เคยผูกกับแพทย์ท่านใดในระบบ
+                หากใช้งานครั้งแรก กรุณาลงทะเบียนด้วยเลข ว. เพื่อผูกบัญชี
+              </p>
+            </div>
+            <div className="space-y-2">
+              <button
+                type="button"
+                onClick={() => { setShowNotLinkedModal(false); setShowFirstTime(true); setLoading(false); }}
+                className="w-full py-3 bg-[#006699] hover:bg-[#005580] text-white rounded-2xl font-bold text-xs cursor-pointer"
+              >
+                ลงทะเบียนด้วยเลข ว.
+              </button>
+              <button
+                type="button"
+                onClick={() => { setShowNotLinkedModal(false); setLoading(false); }}
+                className="w-full py-2 text-slate-500 hover:text-slate-800 text-xs font-medium cursor-pointer"
+              >
+                ปิด
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="bg-white rounded-3xl shadow-2xl border border-white/60 max-w-lg w-full overflow-hidden shadow-sky-950/10 transition-all duration-300">
         
         {/* Header Branding */}
