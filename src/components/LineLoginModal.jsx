@@ -1,16 +1,10 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { QRCodeSVG } from 'qrcode.react';
 import {
-  QrCode,
-  Smartphone,
   ShieldCheck,
   CheckCircle2,
   X,
   Lock,
-  ArrowRight,
-  Sparkles,
-  UserCheck,
   AlertCircle
 } from 'lucide-react';
 
@@ -82,14 +76,14 @@ export default function LineLoginModal({ isOpen, onClose }) {
 
           <div className="flex items-center gap-2.5">
             <div className="p-2 bg-white/10 rounded-xl backdrop-blur-xs">
-              <QrCode className="w-6 h-6 text-sky-200" />
+              <ShieldCheck className="w-6 h-6 text-sky-200" />
             </div>
             <div>
               <h3 className="font-bold text-base leading-tight">
-                เข้าสู่ระบบแอดมินด้วย LINE
+                เข้าสู่ระบบบนคอมพิวเตอร์ด้วย LINE
               </h3>
               <p className="text-[11px] text-sky-200 mt-0.5">
-                สแกน QR Code ด้วยมือถือเพื่อยืนยันตัวตนเจ้าหน้าที่ (BSI Staff)
+                ยืนยันตัวตนเจ้าหน้าที่ / แอดมิน / แพทย์ (BSI Staff)
               </p>
             </div>
           </div>
@@ -108,50 +102,23 @@ export default function LineLoginModal({ isOpen, onClose }) {
             </div>
           ) : (
             <>
-              {/* QR Code Frame */}
-              <div className="relative inline-block p-4 bg-white rounded-3xl border-2 border-dashed border-sky-300 shadow-inner group">
-                <div className="w-48 h-48 bg-white rounded-2xl flex flex-col items-center justify-center relative overflow-hidden border border-slate-200 p-2">
-                  {scanning ? (
-                    <div className="flex flex-col items-center gap-2">
-                      <div className="w-8 h-8 border-3 border-[#06C755] border-t-transparent rounded-full animate-spin"></div>
-                      <span className="text-xs font-bold text-slate-600">กำลังตรวจสอบสิทธิ์...</span>
-                    </div>
-                  ) : (
-                    <div className="relative flex items-center justify-center">
-                      <QRCodeSVG
-                        value={`https://liff.line.me/${import.meta.env.VITE_LIFF_ID || '2012494812-wDotvhLS'}`}
-                        size={160}
-                        level="M"
-                        includeMargin={false}
-                      />
-                      {/* Center BSI Hospital Cross Badge */}
-                      <div className="absolute w-8 h-8 bg-white rounded-full shadow-md border border-slate-200 flex items-center justify-center pointer-events-none">
-                        <div className="w-5 h-5 bg-[#006699] rounded-full flex items-center justify-center text-white font-bold text-[10px]">
-                          +
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-
               {/* Step by Step instructions */}
-              <div className="text-left bg-slate-50 p-3.5 rounded-2xl border border-slate-200 space-y-1.5 text-xs text-slate-600">
+              <div className="text-left bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-2 text-xs text-slate-600">
                 <div className="font-bold text-slate-800 flex items-center gap-1.5 mb-1 text-[11px] uppercase tracking-wide">
-                  <Smartphone className="w-3.5 h-3.5 text-[#06C755]" />
-                  <span>วิธีเปิดระบบ / สแกนใช้งาน:</span>
+                  <Lock className="w-3.5 h-3.5 text-[#06C755]" />
+                  <span>วิธีล็อกอินเข้าใช้งานบนคอมพิวเตอร์:</span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className="w-4 h-4 rounded-full bg-slate-200 text-slate-700 font-bold flex items-center justify-center text-[10px] shrink-0">1</span>
-                  <span>เอามือถือเปิดกล้องหรือแอป LINE แตะสแกน <strong>QR Code</strong> ด้านบนนี้</span>
+                <div className="flex items-start gap-2">
+                  <span className="w-4 h-4 rounded-full bg-slate-200 text-slate-700 font-bold flex items-center justify-center text-[10px] shrink-0 mt-0.5">1</span>
+                  <span>กดปุ่มสีเขียว <strong>"เข้าสู่ระบบด้วย LINE Official (Web Login)"</strong> ด้านล่าง</span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className="w-4 h-4 rounded-full bg-slate-200 text-slate-700 font-bold flex items-center justify-center text-[10px] shrink-0">2</span>
-                  <span>มือถือจะเปิดเข้าระบบ <strong>Doctor Leave @ LINE (BSI)</strong> ทันที</span>
+                <div className="flex items-start gap-2">
+                  <span className="w-4 h-4 rounded-full bg-slate-200 text-slate-700 font-bold flex items-center justify-center text-[10px] shrink-0 mt-0.5">2</span>
+                  <span>ระบบจะเปิดหน้าล็อกอินทางการของ LINE (เลือก <strong>สแกน QR Code</strong> ด้วยแอป LINE ในมือถือ หรือกรอกอีเมล/รหัสผ่าน LINE)</span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className="w-4 h-4 rounded-full bg-slate-200 text-slate-700 font-bold flex items-center justify-center text-[10px] shrink-0">💻</span>
-                  <span>หรือกดปุ่มเขียวด้านล่าง เพื่อล็อกอินแอดมินบนจอคอมนี้</span>
+                <div className="flex items-start gap-2">
+                  <span className="w-4 h-4 rounded-full bg-slate-200 text-slate-700 font-bold flex items-center justify-center text-[10px] shrink-0 mt-0.5">3</span>
+                  <span>เมื่อยืนยันเสร็จ ระบบจะพากลับมาที่หน้าจอคอมเครื่องนี้ตามสิทธิ์ของท่านอัตโนมัติ</span>
                 </div>
               </div>
 
@@ -167,10 +134,20 @@ export default function LineLoginModal({ isOpen, onClose }) {
                 {/* Real LINE Web Login Button */}
                 <button
                   onClick={handleRealLiffLogin}
-                  className="w-full py-2.5 bg-[#06C755] hover:bg-[#05b34c] text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2 shadow-xs transition-transform hover:scale-[1.01] active:scale-[0.99] cursor-pointer"
+                  disabled={scanning}
+                  className="w-full py-3 bg-[#06C755] hover:bg-[#05b34c] disabled:opacity-60 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2 shadow-sm transition-transform hover:scale-[1.01] active:scale-[0.99] cursor-pointer"
                 >
-                  <img src="https://upload.wikimedia.org/wikipedia/commons/4/41/LINE_logo.svg" alt="" className="w-4 h-4" />
-                  <span>เข้าสู่ระบบด้วย LINE Official (Web Login)</span>
+                  {scanning ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <span>กำลังเปิดหน้าล็อกอินของ LINE...</span>
+                    </>
+                  ) : (
+                    <>
+                      <img src="https://upload.wikimedia.org/wikipedia/commons/4/41/LINE_logo.svg" alt="" className="w-4 h-4" />
+                      <span>เข้าสู่ระบบด้วย LINE Official (Web Login)</span>
+                    </>
+                  )}
                 </button>
 
                 {/* Quick Simulation Options for Dev / Admin Testing */}
