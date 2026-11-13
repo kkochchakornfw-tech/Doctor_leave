@@ -68,6 +68,7 @@ export function AuthProvider({ children }) {
             const data = await res.json();
             if (data.doctor) {
               matchedDoctor = data.doctor;
+              try { localStorage.setItem('bsi_returning_user', '1'); } catch { /* ignore */ }
               setCurrentDoctor(data.doctor);
               setNeedsOnboarding(false);
             } else {

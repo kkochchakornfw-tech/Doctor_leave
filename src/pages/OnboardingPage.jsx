@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import {
   ShieldCheck,
@@ -21,12 +21,21 @@ export default function OnboardingPage() {
   const { liffProfile, setNeedsOnboarding, setCurrentDoctor } = useAuth();
   const [showQrModal, setShowQrModal] = useState(false);
   
-  // Fallback for desktop testing / direct URL access
-  const activeLiffProfile = liffProfile || {
+  // Real LINE identity only. A fake test identity is allowed in local dev for convenience.
+  const activeLiffProfile = liffProfile || (import.meta.env.DEV ? {
     displayName: 'นพ.ทดสอบ (LINE Test User)',
     pictureUrl: 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?w=120',
     userId: 'U_TEST_DOCTOR_BSI'
-  };
+  } : null);
+
+  const PENDING_KEY = 'bsi_pending_link_doctor';
+  const readFlag = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
+  const isReturningBrowser = readFlag('bsi_returning_user') === '1';
+
+  // Doctor already linked to the current LINE account (returning user)
+  const [linkedDoctor, setLinkedDoctor] = useState(null);
+  const [checkedLinked, setCheckedLinked] = useState(!liffProfile);
+  const [showFirstTime, setShowFirstTime] = useState(false);
 
   // Input states
   const [licenseInput, setLicenseInput] = useState('');
@@ -81,71 +90,108 @@ export default function OnboardingPage() {
     }
   };
 
-  // Confirm binding LINE with verified doctor
-  const handleConfirmLink = async () => {
-    if (!verifiedDoctor || verifiedDoctor.is_linked) return;
-
+  // Bind the current LINE account to a doctor
+  const linkDoctor = async (doctorId) => {
+    if (!activeLiffProfile) return;
     setError('');
     setLoading(true);
-
     try {
-      const payload = {
-        lineUserId: activeLiffProfile?.userId || 'TEMP_USER_ID',
-        doctorId: verifiedDoctor.id,
-        lineDisplayName: activeLiffProfile?.displayName,
-        linePictureUrl: activeLiffProfile?.pictureUrl
-      };
-
       const res = await fetch('/api/auth/link', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify({
+          lineUserId: activeLiffProfile.userId,
+          doctorId,
+          lineDisplayName: activeLiffProfile.displayName,
+          linePictureUrl: activeLiffProfile.pictureUrl
+        })
       });
-
       const data = await res.json();
-
       if (res.ok && data.success) {
         setSuccess(true);
-        if (data.doctor?.id) {
-          localStorage.setItem('bsi_active_doctor_id', data.doctor.id);
-        }
-        setTimeout(() => {
-          if (setCurrentDoctor) setCurrentDoctor(data.doctor);
-          if (setNeedsOnboarding) setNeedsOnboarding(false);
-          window.location.href = '/';
-        }, 1200);
+        try {
+          localStorage.setItem('bsi_returning_user', '1');
+          if (data.doctor?.id) localStorage.setItem('bsi_active_doctor_id', data.doctor.id);
+        } catch { /* ignore */ }
+        setTimeout(() => { window.location.href = '/'; }, 1200);
       } else {
         setError(data.error || 'เกิดข้อผิดพลาดในการผูกบัญชี');
+        setLoading(false);
       }
-    } catch (err) {
+    } catch {
       setError('ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้ กรุณาลองใหม่อีกครั้ง');
-    } finally {
       setLoading(false);
     }
   };
 
-  // Returning doctor: sign in with the LINE account that is already linked (no license needed)
+  // Redirect to LINE Login (used for returning sign-in and for first-time binding)
+  const redirectToLineLogin = async () => {
+    const liff = (await import('@line/liff')).default;
+    const liffId = import.meta.env.VITE_LIFF_ID || '2012494812-wDotvhLS';
+    if (!liff.id) await liff.init({ liffId });
+    liff.login({ redirectUri: `${window.location.origin}/` });
+  };
+
+  // Confirm binding LINE with verified doctor
+  const handleConfirmLink = async () => {
+    if (!verifiedDoctor || verifiedDoctor.is_linked) return;
+    if (!activeLiffProfile) {
+      // Not signed in to LINE yet: remember the doctor, sign in, then bind automatically on return
+      try { localStorage.setItem(PENDING_KEY, verifiedDoctor.id); } catch { /* ignore */ }
+      setLoading(true);
+      try { await redirectToLineLogin(); } catch (err) {
+        setError(`เปิดหน้าล็อกอิน LINE ไม่สำเร็จ: ${err?.message || 'กรุณาลองใหม่'}`);
+        setLoading(false);
+      }
+      return;
+    }
+    await linkDoctor(verifiedDoctor.id);
+  };
+
+  // On a real LINE session: find the linked doctor, or finish a pending first-time binding
+  useEffect(() => {
+    if (!liffProfile?.userId) { setCheckedLinked(true); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/auth/me?lineUserId=${encodeURIComponent(liffProfile.userId)}`);
+        const data = res.ok ? await res.json() : {};
+        if (cancelled) return;
+        if (data.doctor) {
+          setLinkedDoctor(data.doctor);
+          try { localStorage.removeItem(PENDING_KEY); } catch { /* ignore */ }
+        } else {
+          const pending = readFlag(PENDING_KEY);
+          if (pending) {
+            try { localStorage.removeItem(PENDING_KEY); } catch { /* ignore */ }
+            await linkDoctor(pending);
+          }
+        }
+      } catch { /* show the normal form */ }
+      if (!cancelled) setCheckedLinked(true);
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liffProfile?.userId]);
+
+  const showWelcomeOnly = Boolean(linkedDoctor) || (!activeLiffProfile && isReturningBrowser && !showFirstTime && checkedLinked);
+
+  const handleEnterAsLinked = () => {
+    if (!linkedDoctor) return;
+    try {
+      localStorage.setItem('bsi_returning_user', '1');
+      localStorage.setItem('bsi_active_doctor_id', linkedDoctor.id);
+    } catch { /* ignore */ }
+    setCurrentDoctor(linkedDoctor);
+    setNeedsOnboarding(false);
+  };
+
+  // Returning doctor without an active LINE session: sign in with LINE
   const handleLineLogin = async () => {
     setError('');
     setLoading(true);
     try {
-      const liff = (await import('@line/liff')).default;
-      const liffId = import.meta.env.VITE_LIFF_ID || '2012494812-wDotvhLS';
-      if (!liff.id) await liff.init({ liffId });
-      if (!liff.isLoggedIn()) {
-        liff.login({ redirectUri: `${window.location.origin}/` });
-        return; // page redirects to LINE; on return the app matches the linked doctor automatically
-      }
-      const profile = await liff.getProfile();
-      const res = await fetch(`/api/auth/me?lineUserId=${encodeURIComponent(profile.userId)}`);
-      const data = res.ok ? await res.json() : {};
-      if (data.doctor) {
-        localStorage.setItem('bsi_active_doctor_id', data.doctor.id);
-        window.location.href = '/';
-      } else {
-        setError('บัญชี LINE นี้ยังไม่ได้ผูกกับแพทย์ท่านใด กรุณาระบุเลข ว. เพื่อผูกบัญชี หรือเข้าสู่ระบบด้วยบัญชี LINE ที่เคยผูกไว้');
-        setLoading(false);
-      }
+      await redirectToLineLogin();
     } catch (err) {
       setError(`เข้าสู่ระบบด้วย LINE ไม่สำเร็จ: ${err?.message || 'กรุณาลองใหม่'}`);
       setLoading(false);
@@ -232,6 +278,62 @@ export default function OnboardingPage() {
         {!success && (
           <div className="p-6 space-y-4">
             
+            {/* Returning doctor: LINE account already linked -> welcome back */}
+            {linkedDoctor ? (
+              <div className="space-y-4 text-center animate-in fade-in zoom-in-95 duration-200">
+                <div className="p-4 bg-emerald-50/70 rounded-2xl border-2 border-emerald-200">
+                  <div className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider mb-2">ยินดีต้อนรับกลับ</div>
+                  <div className="flex items-center gap-3.5 text-left">
+                    <div className="w-14 h-14 rounded-2xl overflow-hidden bg-slate-200 border border-slate-300 shrink-0">
+                      <img src={linkedDoctor.avatar || 'https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?w=100'} alt="" className="w-full h-full object-cover" />
+                    </div>
+                    <div className="min-w-0">
+                      <h3 className="font-bold text-slate-900 text-sm leading-tight truncate">
+                        {linkedDoctor.prefix_th}{linkedDoctor.first_name_th} {linkedDoctor.last_name_th}
+                      </h3>
+                      <div className="text-xs font-semibold text-[#006699] mt-0.5 truncate">{linkedDoctor.department_name}</div>
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleEnterAsLinked}
+                  className="w-full py-3.5 bg-[#06C755] hover:bg-[#05b34c] text-white rounded-2xl font-bold text-sm shadow-md transition-all cursor-pointer"
+                >
+                  เข้าสู่ระบบ
+                </button>
+                <p className="text-[11px] text-slate-400">หากไม่ใช่บัญชีของท่าน หรือต้องการเปลี่ยนบัญชี LINE กรุณาติดต่อฝ่ายการแพทย์</p>
+              </div>
+            ) : !checkedLinked ? (
+              <div className="py-8 flex flex-col items-center gap-3">
+                <div className="w-8 h-8 border-2 border-[#006699] border-t-transparent rounded-full animate-spin"></div>
+                <p className="text-xs text-slate-500">กำลังตรวจสอบบัญชี LINE...</p>
+              </div>
+            ) : (!activeLiffProfile && isReturningBrowser && !showFirstTime) ? (
+              /* Returning browser, signed out: just one button */
+              <div className="space-y-4 text-center animate-in fade-in zoom-in-95 duration-200">
+                <div>
+                  <div className="text-base font-bold text-slate-800">ยินดีต้อนรับกลับ</div>
+                  <p className="text-xs text-slate-500 mt-1">กดเพื่อเข้าสู่ระบบด้วยบัญชี LINE ที่เคยผูกไว้</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleLineLogin}
+                  disabled={loading}
+                  className="w-full py-3.5 bg-[#06C755] hover:bg-[#05b34c] disabled:bg-slate-300 text-white rounded-2xl font-bold text-sm shadow-md transition-all cursor-pointer"
+                >
+                  {loading ? 'กำลังเปิดหน้าล็อกอิน LINE...' : 'เข้าสู่ระบบด้วย LINE'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowFirstTime(true)}
+                  className="text-[11px] text-slate-400 hover:text-slate-600 underline"
+                >
+                  ใช้งานครั้งแรก? ลงทะเบียนด้วยเลข ว.
+                </button>
+              </div>
+            ) : (
+            <>
             {/* Step 1: Input License No. (เลข ว.) */}
             {!verifiedDoctor ? (
               <form onSubmit={handleVerify} className="space-y-4">
@@ -377,7 +479,7 @@ export default function OnboardingPage() {
                       ) : (
                         <>
                           <Check className="w-5 h-5 stroke-[2.5]" />
-                          <span>ยืนยันว่านี่คือฉัน และผูกบัญชี LINE</span>
+                          <span>{activeLiffProfile ? 'ยืนยันว่านี่คือฉัน และผูกบัญชี LINE' : 'ยืนยันว่านี่คือฉัน — เข้าสู่ระบบ LINE เพื่อผูกบัญชี'}</span>
                         </>
                       )}
                     </button>
@@ -414,8 +516,11 @@ export default function OnboardingPage() {
               </div>
             )}
 
+            </>
+            )}
+
             {/* Help Card & Admin QR Scan Access */}
-            <div className="pt-3 border-t border-slate-100 text-center space-y-3">
+            <div className={`pt-3 border-t border-slate-100 text-center space-y-3 ${showWelcomeOnly ? 'hidden' : ''}`}>
               <button
                 type="button"
                 onClick={() => setShowQrModal(true)}

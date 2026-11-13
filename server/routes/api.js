@@ -363,7 +363,7 @@ router.post('/doctors/:id/unlink-line', (req, res) => {
       table_name: 'doctors',
       record_id: doctor.id,
       action: 'UPDATE',
-      actor_id: req.body.actor_id || null,
+      actor_id: req.body?.actor_id || null,
       old_data: { line_user_id: prevLineId },
       new_data: { line_user_id: null },
       ip_address: req.ip || '127.0.0.1',
