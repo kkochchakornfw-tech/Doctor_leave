@@ -110,9 +110,17 @@ export function AuthProvider({ children }) {
     }
   };
 
-  const logout = () => {
+  const logout = async () => {
     localStorage.removeItem('bsi_active_doctor_id');
     localStorage.removeItem('bsi_test_doctor_v5');
+    try {
+      const liff = (await import('@line/liff')).default;
+      if (liff.id && liff.isLoggedIn() && !liff.isInClient()) {
+        liff.logout();
+      }
+    } catch {
+      // Ignore if LIFF is not initialized
+    }
     setCurrentDoctor(null);
     setNeedsOnboarding(true);
   };
