@@ -106,6 +106,9 @@ export default function OnboardingPage() {
 
       if (res.ok && data.success) {
         setSuccess(true);
+        if (data.doctor?.id) {
+          localStorage.setItem('bsi_active_doctor_id', data.doctor.id);
+        }
         setTimeout(() => {
           if (setCurrentDoctor) setCurrentDoctor(data.doctor);
           if (setNeedsOnboarding) setNeedsOnboarding(false);

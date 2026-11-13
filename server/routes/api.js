@@ -179,8 +179,18 @@ router.get('/auth/me', (req, res) => {
   const lineUserId = req.query.lineUserId;
   if (!lineUserId) return res.status(400).json({ error: 'lineUserId is required' });
 
-  const doctor = db.doctors.find(d => d.line_user_id === lineUserId);
-  res.json({ doctor: doctor || null });
+  const found = db.doctors.find(d => d.line_user_id === lineUserId);
+  if (!found) return res.json({ doctor: null });
+
+  const roles = (db.doctor_roles || []).filter(r => r.doctor_id === found.id).map(r => r.role);
+  const dept = (db.departments || []).find(dp => dp.id === found.department_id);
+  res.json({
+    doctor: {
+      ...found,
+      roles,
+      department_name: dept?.name_th || 'ไม่ระบุ'
+    }
+  });
 });
 
 // Seed/Reset Mock Test Data on demand

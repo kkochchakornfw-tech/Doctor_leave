@@ -12,13 +12,25 @@ export function AuthProvider({ children }) {
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
   const [isLiffMode, setIsLiffMode] = useState(false);
 
-  // Fetch doctors list
-  const fetchDoctors = async () => {
+  // Fetch doctors list; preserve LIFF-authenticated doctor if provided
+  const fetchDoctors = async (authenticatedDoctor = null, skipRestore = false) => {
     try {
       const res = await fetch('/api/doctors');
       if (res.ok) {
         const data = await res.json();
         setDoctors(data);
+
+        if (authenticatedDoctor) {
+          const enriched = data.find(d => d.id === authenticatedDoctor.id) || authenticatedDoctor;
+          setCurrentDoctor(enriched);
+          localStorage.setItem('bsi_active_doctor_id', enriched.id);
+          return;
+        }
+
+        if (skipRestore) {
+          setCurrentDoctor(null);
+          return;
+        }
 
         // Only restore doctor if explicitly saved in session
         const savedId = localStorage.getItem('bsi_active_doctor_id');
@@ -50,10 +62,12 @@ export function AuthProvider({ children }) {
           const profile = await liff.getProfile();
           setLiffProfile(profile);
 
+          let matchedDoctor = null;
           const res = await fetch(`/api/auth/me?lineUserId=${profile.userId}`);
           if (res.ok) {
             const data = await res.json();
             if (data.doctor) {
+              matchedDoctor = data.doctor;
               setCurrentDoctor(data.doctor);
               setNeedsOnboarding(false);
             } else {
@@ -65,7 +79,7 @@ export function AuthProvider({ children }) {
             setCurrentDoctor(null);
             setNeedsOnboarding(true);
           }
-          await fetchDoctors();
+          await fetchDoctors(matchedDoctor, !matchedDoctor);
           return;
         }
       } catch (err) {
