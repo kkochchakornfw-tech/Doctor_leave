@@ -19,21 +19,28 @@ export default function LineLoginModal({ isOpen, onClose }) {
   const [scanning, setScanning] = useState(false);
   const [success, setSuccess] = useState(false);
   const [loggedInName, setLoggedInName] = useState('');
+  const [errorMsg, setErrorMsg] = useState('');
 
   if (!isOpen) return null;
 
   // Real LIFF Login redirect
   const handleRealLiffLogin = async () => {
+    setErrorMsg('');
+    setScanning(true);
     try {
       const liff = (await import('@line/liff')).default;
       const liffId = import.meta.env.VITE_LIFF_ID || '2012494812-wDotvhLS';
-      if (!liff.isInitialized()) {
+      if (!liff.id) {
         await liff.init({ liffId });
       }
-      liff.login({ redirectUri: window.location.href });
+      if (liff.isLoggedIn()) {
+        liff.logout();
+      }
+      liff.login({ redirectUri: `${window.location.origin}/` });
     } catch (err) {
-      console.warn('Real LIFF login failed, falling back to simulated scan:', err);
-      handleSimulatedLogin('EMP-KOONG');
+      console.error('Real LIFF login failed:', err);
+      setScanning(false);
+      setErrorMsg(`ไม่สามารถเปิดหน้าล็อกอิน LINE ได้: ${err?.message || 'กรุณาเปิดผ่านโดเมนจริงของระบบ'}`);
     }
   };
 
@@ -150,6 +157,13 @@ export default function LineLoginModal({ isOpen, onClose }) {
 
               {/* Action Buttons for Testing / Production */}
               <div className="space-y-2 pt-1">
+                {errorMsg && (
+                  <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-[11px] font-medium flex items-start gap-2 text-left">
+                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                    <span>{errorMsg}</span>
+                  </div>
+                )}
+
                 {/* Real LINE Web Login Button */}
                 <button
                   onClick={handleRealLiffLogin}
