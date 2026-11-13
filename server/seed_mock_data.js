@@ -1,5 +1,4 @@
 import { getDb, saveStore, initStore } from './db.js';
-import { syncStoreToSupabase } from './supabase_sync.js';
 import { v4 as uuidv4 } from 'uuid';
 
 export async function generateMockData() {
@@ -387,9 +386,8 @@ export async function generateMockData() {
   db.leave_balances = leave_balances;
   db.audit_logs = audit_logs;
 
-  // Save to local store.json and sync up to Supabase Cloud
+  // Persist to the configured store
   saveStore();
-  await syncStoreToSupabase(db);
 
   return {
     success: true,

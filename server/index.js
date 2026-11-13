@@ -67,6 +67,13 @@ app.use((req, res, next) => {
 });
 
 import { initStore } from './db.js';
+import { flushPostgres } from './pg_store.js';
+
+for (const sig of ['SIGTERM', 'SIGINT']) {
+  process.on(sig, async () => {
+    try { await flushPostgres(); } finally { process.exit(0); }
+  });
+}
 
 // Initialize Cron Jobs
 initCronJobs();

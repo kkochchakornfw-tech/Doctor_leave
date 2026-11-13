@@ -8,8 +8,7 @@ import {
   getDb,
   saveStore,
   resetStore,
-  isSupabaseConfigured,
-  supabase
+  isPostgresConfigured
 } from '../db.js';
 import {
   sendLinePushMessage,
@@ -158,7 +157,7 @@ router.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     system: 'Doctor Leave @ LINE - Bangkok Hospital Siriroj',
-    supabaseConnected: isSupabaseConfigured,
+    databaseConnected: isPostgresConfigured,
     lineConfigured: isLineConfigured,
     totalDoctors: db.doctors.length,
     totalLeaveRequests: db.leave_requests.length,

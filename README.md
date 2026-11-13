@@ -43,7 +43,7 @@
 * **Frontend:** React 19, Vite, Tailwind CSS, Lucide React, React Router
 * **Backend:** Node.js, Express 5, Multer (File Uploads)
 * **Database & Persistence:**
-  * Supabase Client (`@supabase/supabase-js`) สำหรับเชื่อมต่อ PostgreSQL Cloud
+  * `pg` สำหรับเชื่อมต่อ PostgreSQL (เก็บข้อมูลเป็น JSONB ในตาราง `app_state`)
   * มีระบบ **High-Fidelity Embedded Database Engine** ในตัวที่โหลดข้อมูลเริ่มต้น (Seed Data) ตาม `supabase_schema.sql` พร้อมใช้งานได้ทันทีโดยไม่ต้องติดตั้งฐานข้อมูลภายนอก
 * **Notification Engine:** LINE Messaging API (Flex Messages 2.0) + In-App Live Simulator
 
@@ -98,10 +98,8 @@ APP_URL=http://localhost:5173
 MEDICAL_ADMIN_PHONE=076-361888
 MEDICAL_ADMIN_NAME=ฝ่ายการแพทย์ (คุณสิริมาศ)
 
-# Supabase (ระบุเมื่อต้องการต่อ Supabase Cloud ในระบบ Production)
-SUPABASE_URL=
-SUPABASE_ANON_KEY=
-SUPABASE_SERVICE_ROLE_KEY=
+# PostgreSQL (ระบุเมื่อต้องการเก็บข้อมูลบน Postgres ในระบบ Production)
+DATABASE_URL=
 
 # LINE Official Account (ระบุเมื่อต้องการส่ง Push Message เข้า LINE จริง)
 LINE_CHANNEL_ACCESS_TOKEN=
@@ -109,7 +107,7 @@ LINE_CHANNEL_SECRET=
 LIFF_ID=
 ```
 
-> **หมายเหตุ:** หากเว้นว่างค่า Supabase และ LINE ไว้ ระบบจะเปิดใช้งาน **Embedded Engine + LINE Simulator** อัตโนมัติ ทำให้สามารถทดสอบและพรีเซนต์ระบบได้ครบทุกฟังก์ชัน 100% ทันที
+> **หมายเหตุ:** หากเว้นว่างค่า DATABASE_URL และ LINE ไว้ ระบบจะเปิดใช้งาน **Embedded Engine + LINE Simulator** อัตโนมัติ ทำให้สามารถทดสอบและพรีเซนต์ระบบได้ครบทุกฟังก์ชัน 100% ทันที
 
 ---
 

@@ -9,9 +9,9 @@
 ระบบถูกออกแบบด้วยสถาปัตยกรรม **High-Availability Hybrid Dual-Mode**:
 * **Frontend:** React 19 + Tailwind CSS + Vite (Single-Page Application บน LINE LIFF)
 * **Backend:** Node.js 20 (Express.js) ให้บริการทั้ง REST APIs, Webhook, Cron Scheduler และ static web hosting
-* **Dual Database Engine:**
-  * **Primary:** Supabase Cloud PostgreSQL (RLS & Real-time backup)
-  * **Fallback Store:** Local JSON Store (`server/data/store.json`) ทำงานต่อเนื่องได้ 100% แม้อินเทอร์เน็ตโรงพยาบาลขัดข้อง
+* **Database:**
+  * **PostgreSQL** (เช่น Railway Postgres) ผ่านตัวแปร `DATABASE_URL` — ระบบเก็บข้อมูลเป็น JSONB ในตาราง `app_state` (สร้างให้อัตโนมัติ)
+  * **Local JSON Store** (`server/data/store.json`) ใช้เมื่อไม่ได้ตั้ง `DATABASE_URL` (สำหรับพัฒนา/ทดสอบ)
 * **Security & Compliance:** ตรวจสอบ LINE Signature (HMAC-SHA256) และบันทึก Audit Log ตามมาตรฐาน PDPA ทุก Transaction
 
 ---
@@ -49,8 +49,7 @@ nano .env
 | `VITE_LIFF_ID` | LIFF ID จาก LINE Developers Console | `2000000000-XXXXXXXX` |
 | `LINE_CHANNEL_ACCESS_TOKEN` | Long-lived Token จาก Messaging API | `eyJhbGciOiJIUz...` |
 | `LINE_CHANNEL_SECRET` | Channel Secret สำหรับยืนยัน Webhook Signature | `a1b2c3d4e5f6...` |
-| `SUPABASE_URL` | URL ของ Supabase Database Project | `https://xyzcompany.supabase.co` |
-| `SUPABASE_SERVICE_ROLE_KEY` | Key สิทธิ์ Admin สำหรับซิงก์ข้อมูล | `eyJhbGciOi...` |
+| `DATABASE_URL` | Connection string ของ PostgreSQL | `postgresql://user:pass@host:5432/railway` |
 
 ---
 

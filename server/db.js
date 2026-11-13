@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { v4 as uuidv4 } from 'uuid';
-import { createClient } from '@supabase/supabase-js';
+import { loadStoreFromPostgres, queueSaveToPostgres, isPostgresConfigured } from './pg_store.js';
 import dotenv from 'dotenv';
 import {
   departments as masterDepartments,
@@ -18,22 +18,7 @@ const __dirname = path.dirname(__filename);
 const DATA_DIR = path.join(__dirname, 'data');
 const DATA_FILE = path.join(DATA_DIR, 'store.json');
 
-// Check Supabase connection
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
-export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseKey && supabaseUrl.startsWith('http'));
-
-export let supabase = null;
-if (isSupabaseConfigured) {
-  try {
-    supabase = createClient(supabaseUrl, supabaseKey);
-    console.log('📡 Supabase Client configured for:', supabaseUrl);
-  } catch (err) {
-    console.warn('⚠️ Supabase init failed, falling back to local database engine:', err.message);
-  }
-}
-
-// Initial Seed Data matching D:\supabase_schema.sql
+// Initial Seed Data matching supabase_schema.sql
 const getInitialSeedData = () => {
   const departments = masterDepartments;
 
@@ -281,7 +266,6 @@ if (!fs.existsSync(DATA_DIR)) {
 let db = null;
 
 export const initStore = async () => {
-  const { loadStoreFromSupabase } = await import('./supabase_sync.js');
   let fallbackDb = null;
   
   if (fs.existsSync(DATA_FILE)) {
@@ -296,8 +280,8 @@ export const initStore = async () => {
     fallbackDb = getInitialSeedData();
   }
 
-  // Load from Supabase (or use fallback if disconnected)
-  db = await loadStoreFromSupabase(fallbackDb);
+  // Load from PostgreSQL (DATABASE_URL), or use local file/seed if not configured
+  db = await loadStoreFromPostgres(fallbackDb);
   
   // Ensure tenure_rules, tenure_settings, contact_settings exist
   const seed = getInitialSeedData();
@@ -479,25 +463,25 @@ export const initStore = async () => {
     });
   });
 
-  // Save the merged/fetched data back to local store
-  fs.writeFileSync(DATA_FILE, JSON.stringify(db, null, 2), 'utf-8');
+  // Save the merged/fetched data back to the store
+  saveStore();
 };
 
 
 export const saveStore = () => {
+  if (isPostgresConfigured) {
+    // PostgreSQL is the source of truth (debounced background write)
+    queueSaveToPostgres(db);
+    return;
+  }
   try {
     fs.writeFileSync(DATA_FILE, JSON.stringify(db, null, 2), 'utf-8');
-    
-    // Background sync to Supabase
-    if (isSupabaseConfigured && supabase) {
-      import('./supabase_sync.js').then(({ syncStoreToSupabase }) => {
-        syncStoreToSupabase(db);
-      }).catch(err => console.error('Failed to load sync module:', err));
-    }
   } catch (err) {
     console.error('Failed to save store.json:', err);
   }
 };
+
+export { isPostgresConfigured };
 
 export const getDb = () => db;
 
