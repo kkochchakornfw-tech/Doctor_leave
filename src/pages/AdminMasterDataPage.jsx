@@ -524,9 +524,78 @@ export default function AdminMasterDataPage() {
     setBulkPreviewRows(parsed);
   };
 
-  const handleBulkFileUpload = (e) => {
+  // Map English department names from the hospital master list to app department codes
+  const MASTER_DEPT_MAP = {
+    'medicine unit': 'MED',
+    'pediatrics': 'PED',
+    'obstetrics & gynecology': 'OBGYN',
+    'surgery unit': 'SURG_ORTHO_REHAB',
+    'orthopedic surgery': 'SURG_ORTHO_REHAB',
+    'rehabilitation': 'SURG_ORTHO_REHAB',
+    'dental': 'DENT',
+    'eye ear nose throat': 'EYE_ENT',
+    'imaging': 'RAD',
+    'cancer center': 'RAD',
+    'emergency': 'ER_OUTREACH',
+    'outreach clinic': 'ER_OUTREACH',
+    'health promotion': 'HEALTH_PROMO',
+    'anesthetic': 'ANES',
+    'operating room (ppsi)': 'PPSI_SKIN'
+  };
+
+  const pad2 = (n) => String(n).padStart(2, '0');
+  const toDateStr = (v) => {
+    if (!v) return '';
+    if (v instanceof Date && !isNaN(v)) return `${v.getFullYear()}-${pad2(v.getMonth() + 1)}-${pad2(v.getDate())}`;
+    return String(v).slice(0, 10);
+  };
+
+  // Read the hospital "Doctor Master List" Excel export (.xlsx)
+  const parseMasterListXlsx = async (file) => {
+    const XLSX = await import('xlsx');
+    const wb = XLSX.read(await file.arrayBuffer(), { type: 'array', cellDates: true });
+    const sheetName = wb.SheetNames.includes('Doctors') ? 'Doctors' : wb.SheetNames[0];
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { defval: '' });
+    if (rows.length === 0 || !('Thai First Name' in rows[0])) {
+      showToast('รูปแบบไฟล์ Excel ไม่ตรง (ต้องมีคอลัมน์ Thai First Name)', 'error');
+      return;
+    }
+    const parsed = rows
+      .filter(r => String(r['Status'] || 'Active') === 'Active')
+      .map((r, idx) => {
+        const license = String(r['Medical License'] || '').trim();
+        const deptEn = String(r['Department'] || '').trim();
+        return {
+          prefix_th: String(r['Thai Title'] || 'นพ.').trim(),
+          first_name_th: String(r['Thai First Name'] || '').trim(),
+          last_name_th: String(r['Thai Last Name'] || '').trim(),
+          employee_id: String(r['Doctor ID'] || '').trim() || (license ? `DR-${license}` : `DOC-${idx + 1}`),
+          license_no: license,
+          department: MASTER_DEPT_MAP[deptEn.toLowerCase()] || deptEn,
+          specialty_group: '',
+          doctor_type: String(r['Work Type'] || '').toUpperCase().includes('PART') ? 'PART_TIME' : 'FULL_TIME',
+          hire_date: toDateStr(r['Start Date']),
+          phone: '',
+          role: 'DOCTOR'
+        };
+      })
+      .filter(r => r.first_name_th);
+    setBulkRawText(`(นำเข้าจากไฟล์ Excel: ${file.name} — ชีต ${sheetName})`);
+    setBulkPreviewRows(parsed);
+  };
+
+  const handleBulkFileUpload = async (e) => {
     const file = e.target.files?.[0];
+    e.target.value = '';
     if (!file) return;
+    if (/\.xlsx?$/i.test(file.name)) {
+      try {
+        await parseMasterListXlsx(file);
+      } catch (err) {
+        showToast('อ่านไฟล์ Excel ไม่สำเร็จ: ' + err.message, 'error');
+      }
+      return;
+    }
     const reader = new FileReader();
     reader.onload = (evt) => {
       const content = evt.target?.result || '';
@@ -2578,10 +2647,10 @@ export default function AdminMasterDataPage() {
                   </button>
                   <label className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] shadow-2xs cursor-pointer">
                     <Upload className="w-3.5 h-3.5" />
-                    <span>เลือกไฟล์ CSV / TXT</span>
+                    <span>เลือกไฟล์ Excel / CSV</span>
                     <input
                       type="file"
-                      accept=".csv,.txt"
+                      accept=".csv,.txt,.xlsx"
                       onChange={handleBulkFileUpload}
                       className="hidden"
                     />

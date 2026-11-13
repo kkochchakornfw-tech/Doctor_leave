@@ -31,6 +31,7 @@ app.use((req, res, next) => {
 // Middlewares
 app.use(cors());
 app.use(express.json({
+  limit: '10mb',
   verify: (req, res, buf) => {
     req.rawBody = buf;
   }
