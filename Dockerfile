@@ -9,7 +9,7 @@ WORKDIR /app
 
 # Install build dependencies
 COPY package*.json ./
-RUN npm ci
+RUN npm ci --ignore-scripts
 
 # Copy source and build production bundle
 COPY . .
