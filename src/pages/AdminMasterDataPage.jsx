@@ -108,7 +108,8 @@ export default function AdminMasterDataPage() {
     doctor_type: 'FULL_TIME',
     hire_date: new Date().toISOString().split('T')[0],
     phone: '',
-    role: 'DOCTOR'
+    role: 'DOCTOR',
+    is_admin: false
   });
 
   // Bulk Import Excel/CSV Modal State
@@ -415,7 +416,8 @@ export default function AdminMasterDataPage() {
       doctor_type: 'FULL_TIME',
       hire_date: new Date().toISOString().split('T')[0],
       phone: '',
-      role: 'DOCTOR'
+      role: 'DOCTOR',
+      is_admin: false
     });
     setDoctorModalOpen(true);
   };
@@ -423,6 +425,7 @@ export default function AdminMasterDataPage() {
   const handleOpenEditDoctor = (doc) => {
     setEditingDoctor(doc);
     const isHead = (doc.roles || []).includes('DEPT_HEAD');
+    const isAdmin = (doc.roles || []).includes('MEDICAL_ADMIN') || (doc.roles || []).includes('ADMIN');
     setDoctorForm({
       prefix_th: doc.prefix_th || 'นพ.',
       first_name_th: doc.first_name_th || '',
@@ -434,7 +437,8 @@ export default function AdminMasterDataPage() {
       doctor_type: doc.doctor_type || 'FULL_TIME',
       hire_date: doc.hire_date || new Date().toISOString().split('T')[0],
       phone: doc.phone || '',
-      role: isHead ? 'DEPT_HEAD' : 'DOCTOR'
+      role: isHead ? 'DEPT_HEAD' : 'DOCTOR',
+      is_admin: isAdmin
     });
     setDoctorModalOpen(true);
   };
@@ -1436,6 +1440,11 @@ export default function AdminMasterDataPage() {
                                   {doc.license_no && (
                                     <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200 font-mono">
                                       {doc.license_no}
+                                    </span>
+                                  )}
+                                  {((doc.roles || []).includes('MEDICAL_ADMIN') || (doc.roles || []).includes('ADMIN')) && (
+                                    <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200">
+                                      🛡️ แอดมิน
                                     </span>
                                   )}
                                 </div>
@@ -2448,6 +2457,35 @@ export default function AdminMasterDataPage() {
                   </select>
                 </div>
               </div>
+
+              <label className={`flex items-start gap-2.5 p-3 rounded-xl border transition-colors ${
+                editingDoctor?.employee_id === 'EMP-KOONG'
+                  ? 'bg-amber-50/70 border-amber-200 cursor-not-allowed opacity-85'
+                  : doctorForm.is_admin
+                    ? 'bg-amber-50 border-amber-300 cursor-pointer'
+                    : 'bg-slate-50 border-slate-200 hover:bg-slate-100/70 cursor-pointer'
+              }`}>
+                <input
+                  type="checkbox"
+                  checked={Boolean(doctorForm.is_admin)}
+                  disabled={editingDoctor?.employee_id === 'EMP-KOONG'}
+                  onChange={(e) => setDoctorForm({ ...doctorForm, is_admin: e.target.checked })}
+                  className="mt-0.5 w-4 h-4 accent-amber-600 rounded"
+                />
+                <div className="flex-1">
+                  <div className="font-bold text-slate-800 flex items-center gap-1.5">
+                    <span>🛡️ สิทธิ์แอดมินฝ่ายการแพทย์ (Medical Admin)</span>
+                    {editingDoctor?.employee_id === 'EMP-KOONG' && (
+                      <span className="text-[10px] font-semibold px-1.5 py-0.2 rounded bg-amber-200/70 text-amber-900">
+                        แอดมินหลัก (ล็อก)
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">
+                    สามารถเข้าเมนูฝ่ายการแพทย์, จัดการตารางเวร, แก้ไขรายชื่อ/สายอนุมัติ, ตั้งค่าเกณฑ์ และดู Audit Log ได้ทั้งหมด
+                  </p>
+                </div>
+              </label>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>

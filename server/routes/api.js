@@ -469,6 +469,26 @@ function syncDoctorApprovalRoute(db, doc, dept) {
   }
 }
 
+/**
+ * Sync MEDICAL_ADMIN and ADMIN roles for a doctor/staff record.
+ */
+function syncDoctorAdminRoles(db, doc, isAdmin) {
+  if (!doc || doc.employee_id === 'EMP-KOONG') return;
+  const adminRoles = ['MEDICAL_ADMIN', 'ADMIN'];
+  if (isAdmin) {
+    adminRoles.forEach(roleName => {
+      const exists = db.doctor_roles.some(r => r.doctor_id === doc.id && r.role === roleName);
+      if (!exists) {
+        db.doctor_roles.push({ id: uuidv4(), doctor_id: doc.id, role: roleName });
+      }
+    });
+  } else {
+    db.doctor_roles = db.doctor_roles.filter(
+      r => !(r.doctor_id === doc.id && adminRoles.includes(r.role))
+    );
+  }
+}
+
 // POST /api/doctors - Add single doctor
 router.post('/doctors', (req, res) => {
   const db = getDb();
@@ -486,6 +506,7 @@ router.post('/doctors', (req, res) => {
     email = '',
     position = '',
     role = 'DOCTOR',
+    is_admin = false,
     actor_id
   } = req.body;
 
@@ -529,6 +550,7 @@ router.post('/doctors', (req, res) => {
       dept.head_doctor_id = newDoc.id;
     }
   }
+  syncDoctorAdminRoles(db, newDoc, Boolean(is_admin));
 
   // Provision leave balances
   const currentYear = new Date().getFullYear();
@@ -598,6 +620,7 @@ router.put('/doctors/:id', (req, res) => {
     position,
     is_active,
     role,
+    is_admin,
     actor_id
   } = req.body;
 
@@ -622,6 +645,9 @@ router.put('/doctors/:id', (req, res) => {
     } else if (role === 'DOCTOR' && hasHead) {
       db.doctor_roles = db.doctor_roles.filter(r => !(r.doctor_id === doc.id && r.role === 'DEPT_HEAD'));
     }
+  }
+  if (is_admin !== undefined) {
+    syncDoctorAdminRoles(db, doc, Boolean(is_admin));
   }
 
   const dept = db.departments.find(d => d.id === doc.department_id);
