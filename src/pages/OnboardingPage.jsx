@@ -69,7 +69,7 @@ export default function OnboardingPage() {
       if (res.ok && data.doctor) {
         setVerifiedDoctor(data.doctor);
         if (data.doctor.is_linked) {
-          setError(`บัญชีของ ${data.doctor.prefix_th}${data.doctor.first_name_th} ${data.doctor.last_name_th} ได้ผูกกับ LINE ไปแล้ว หากต้องการเปลี่ยนบัญชี LINE กรุณาติดต่อฝ่ายการแพทย์`);
+          setError(`บัญชีของ ${data.doctor.prefix_th}${data.doctor.first_name_th} ${data.doctor.last_name_th} ได้ผูกกับ LINE ไปแล้ว หากเป็นบัญชีของท่านให้กด "เข้าสู่ระบบด้วย LINE" หากต้องการเปลี่ยนบัญชี LINE กรุณาติดต่อฝ่ายการแพทย์`);
         }
       } else {
         setError(data.error || 'ไม่พบข้อมูลแพทย์ในระบบ');
@@ -120,6 +120,34 @@ export default function OnboardingPage() {
     } catch (err) {
       setError('ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้ กรุณาลองใหม่อีกครั้ง');
     } finally {
+      setLoading(false);
+    }
+  };
+
+  // Returning doctor: sign in with the LINE account that is already linked (no license needed)
+  const handleLineLogin = async () => {
+    setError('');
+    setLoading(true);
+    try {
+      const liff = (await import('@line/liff')).default;
+      const liffId = import.meta.env.VITE_LIFF_ID || '2012494812-wDotvhLS';
+      if (!liff.id) await liff.init({ liffId });
+      if (!liff.isLoggedIn()) {
+        liff.login({ redirectUri: `${window.location.origin}/` });
+        return; // page redirects to LINE; on return the app matches the linked doctor automatically
+      }
+      const profile = await liff.getProfile();
+      const res = await fetch(`/api/auth/me?lineUserId=${encodeURIComponent(profile.userId)}`);
+      const data = res.ok ? await res.json() : {};
+      if (data.doctor) {
+        localStorage.setItem('bsi_active_doctor_id', data.doctor.id);
+        window.location.href = '/';
+      } else {
+        setError('บัญชี LINE นี้ยังไม่ได้ผูกกับแพทย์ท่านใด กรุณาระบุเลข ว. เพื่อผูกบัญชี หรือเข้าสู่ระบบด้วยบัญชี LINE ที่เคยผูกไว้');
+        setLoading(false);
+      }
+    } catch (err) {
+      setError(`เข้าสู่ระบบด้วย LINE ไม่สำเร็จ: ${err?.message || 'กรุณาลองใหม่'}`);
       setLoading(false);
     }
   };
@@ -269,6 +297,16 @@ export default function OnboardingPage() {
                   )}
                 </button>
 
+                {/* Returning doctor: already linked, just sign in with LINE */}
+                <button
+                  type="button"
+                  onClick={handleLineLogin}
+                  disabled={loading}
+                  className="w-full py-2.5 border border-[#06C755] text-[#05a345] hover:bg-emerald-50 disabled:opacity-50 rounded-2xl font-bold text-xs transition-all cursor-pointer"
+                >
+                  เคยผูกบัญชีแล้ว? เข้าสู่ระบบด้วย LINE
+                </button>
+
                 {/* Mode toggle */}
                 <div className="text-center pt-2">
                   <button
@@ -356,6 +394,14 @@ export default function OnboardingPage() {
                   </div>
                 ) : (
                   <div className="space-y-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={handleLineLogin}
+                      disabled={loading}
+                      className="w-full py-3 bg-[#06C755] hover:bg-[#05b34c] disabled:bg-slate-300 text-white rounded-2xl font-bold text-sm flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer"
+                    >
+                      <span>{loading ? 'กำลังเข้าสู่ระบบ...' : 'นี่คือบัญชีของฉัน — เข้าสู่ระบบด้วย LINE'}</span>
+                    </button>
                     <button
                       type="button"
                       onClick={resetSearch}

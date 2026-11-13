@@ -122,6 +122,7 @@ export function AuthProvider({ children }) {
       // Ignore if LIFF is not initialized
     }
     setCurrentDoctor(null);
+    setLiffProfile(null);
     setNeedsOnboarding(true);
   };
 
